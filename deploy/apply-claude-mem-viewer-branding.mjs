@@ -135,11 +135,19 @@ const CSS = `
       background-image: url('https://pi.dev/logo-auto.svg');
     }
 
-    /* Hermes: official Hermes Agent favicon from Nous Research. */
+    /*
+     * Hermes: use the official 32x32 avatar/favicon PNG from
+     * NousResearch/hermes-agent. Deployment places a local reviewed copy
+     * beside viewer.html; the official raw asset is a network fallback.
+     */
     .source-hermes::before,
     .source-hermes-agent::before,
     .source-Hermes::before {
-      background-image: url('https://raw.githubusercontent.com/NousResearch/hermes-agent/main/website/static/img/favicon.svg');
+      background-image:
+        url('hermes-favicon-32.png'),
+        url('https://raw.githubusercontent.com/NousResearch/hermes-agent/main/website/static/img/favicon-32x32.png');
+      background-size: contain, contain;
+      background-position: center, center;
     }
 
     /*
