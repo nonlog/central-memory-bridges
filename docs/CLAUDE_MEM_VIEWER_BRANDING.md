@@ -11,7 +11,7 @@ Supported source names and aliases:
 | Platform | Source aliases | Artwork source |
 | --- | --- | --- |
 | ChatGPT | `chatgpt`, `chatgpt-web`, `ChatGPT` | OpenAI's current Blossom symbol; OpenAI-authored SVG transported through Wikimedia Commons because anonymous cross-site requests to `chatgpt.com`/`openai.com` favicon endpoints are Cloudflare-challenged |
-| Codex | `codex`, `codex-cli`, `Codex` | Current Codex app artwork published on OpenAI's Codex get-started page; CSS crops the published icon from that image |
+| Codex | `codex`, `codex-cli`, `Codex` | Preferred: the official `codex-app-ga-logo--UgmJjKM.png` bundled with the OpenAI Codex app/extension, installed locally beside `viewer.html` as `codex-app-ga-logo.png`; fallback: OpenAI Blossom |
 | Claude | `claude`, `claude-code`, `Claude` | Claude web app favicon (`claude.ai`) |
 | Pi | `pi`, `Pi` | `pi.dev/logo-auto.svg`, referenced as the Pi logo by the Pi repository README |
 | Hermes | `hermes`, `hermes-agent`, `Hermes` | Hermes Agent favicon from `NousResearch/hermes-agent` |
@@ -45,6 +45,18 @@ node deploy/apply-claude-mem-viewer-branding.mjs --root /path/to/claude-mem --ch
 
 A successful check prints `OK` for each Viewer HTML file found. The patcher is idempotent: applying the current version again leaves already-current files unchanged.
 
+## Codex asset
+
+The Codex badge no longer crops a large promotional image. That approach produced a visibly malformed tiny blue/purple fragment at badge size.
+
+For the production deployment, the icon was taken from the installed official OpenAI Codex package/extension asset named `codex-app-ga-logo--UgmJjKM.png` (104×104 RGBA, SHA-256 `8e82b26c98a10e45798ce48124515720657f7735fb8d0853b3f087eaa8a6b74e`). A reviewed copy is stored outside the public source repository and copied beside each active `viewer.html` as:
+
+```text
+codex-app-ga-logo.png
+```
+
+The CSS tries that relative local asset first and uses the OpenAI Blossom as a clean fallback if the local Codex asset is absent. This keeps the public repository from redistributing a product binary asset while allowing deployments that already possess the official Codex package to use its real app logo.
+
 ## Deployment and upgrades
 
 After applying the overlay, verify the HTML actually served by the Worker rather than assuming the on-disk change is live. `claude-mem` 13.15.0 in the production deployment was observed to cache Viewer HTML at Worker startup: the on-disk file contained the new branding block while the live HTTP response still returned the previous HTML until the Worker was restarted.
@@ -67,17 +79,17 @@ Re-run the patcher after every `claude-mem` upgrade. The patch is delimited by t
 
 The patcher prefers the upstream `.card-title` CSS block as its insertion point and falls back to the closing `</style>` tag. It fails instead of silently editing an unknown structure when neither anchor exists.
 
-Production also wires the patcher into the existing non-blocking weekly `claude-mem` update flow after the source/platform identity overlay. Marketplace and versioned cache Viewer copies are reapplied after an official upgrade; branding failure is logged but does not abort the official upgrade/rollback path.
+Production also wires the patcher into the existing non-blocking weekly `claude-mem` update flow after the source/platform identity overlay. Marketplace and versioned cache Viewer copies are reapplied after an official upgrade; the local Codex asset is copied into those Viewer directories before branding is applied. Branding failure is logged but does not abort the official upgrade/rollback path.
 
 ## Verification checklist
 
 1. Run the patcher with `--check` for the marketplace/installed root and any active cache roots.
 2. Fetch the live Viewer HTML and confirm it contains `central-memory-bridges: platform-source-icons:start`; restart/reload the Worker if the live response remains stale.
-3. Open the central Viewer and hard-refresh it.
-4. Confirm recent ChatGPT and Codex Prompt/Summary cards show an icon plus correctly capitalized product name.
-5. Confirm Claude, Pi, Hermes, and OpenClaw cards render correctly when those sources are present.
-6. Toggle light/dark mode and verify icon alignment and badge readability.
-7. Confirm the icon asset URLs remain reachable. Text labels remain visible if an image cannot be loaded.
+3. Confirm `codex-app-ga-logo.png` returns HTTP 200 in deployments using the official local Codex asset.
+4. Open the central Viewer and hard-refresh it.
+5. Confirm recent ChatGPT and Codex Prompt/Summary cards show an icon plus correctly capitalized product name.
+6. Confirm Claude, Pi, Hermes, and OpenClaw cards render correctly when those sources are present.
+7. Toggle light/dark mode and verify icon alignment and badge readability.
 
 ## Production validation — 2026-08-14
 
@@ -87,8 +99,9 @@ The overlay was deployed to the central `claude-mem` 13.15.0 Worker on 2026-08-1
 - the live Worker initially served cached pre-patch HTML, then served both the existing platform-identity marker and the new icon-branding marker after a controlled Worker restart;
 - Worker health returned `status=ok`, version `13.15.0`, with MCP ready after restart;
 - the ChatGPT MCP bridge remained active, and Hermes dashboard/gateway services remained active;
-- Claude, Codex, Pi, Hermes, and OpenClaw artwork endpoints returned HTTP 200 from the deployment host;
-- the direct ChatGPT/OpenAI favicon endpoints returned HTTP 403 to anonymous requests, so the ChatGPT badge was changed to the OpenAI-authored Blossom SVG via the Wikimedia Commons redirect, which returned HTTP 200.
+- the direct ChatGPT/OpenAI favicon endpoints returned HTTP 403 to anonymous requests, so the ChatGPT badge uses the OpenAI-authored Blossom SVG via the Wikimedia Commons redirect;
+- the first Codex implementation cropped an OpenAI promotional image and rendered incorrectly at badge size; it was replaced with the 104×104 `codex-app-ga-logo` asset extracted from the installed official OpenAI Codex package;
+- after the fix, the local `codex-app-ga-logo.png` endpoint returned HTTP 200 and the live Viewer HTML referenced it directly.
 
 ## Rollback
 
@@ -96,9 +109,9 @@ Restore the Viewer HTML files from the installed `claude-mem` version or deploym
 
 ## External assets and failure behavior
 
-The overlay references product/project artwork rather than redrawing brand marks. The browser therefore performs ordinary image GET requests for those icons. If an image request is unavailable or blocked, the product text remains visible through the badge pseudo-element.
+The overlay references product/project artwork rather than redrawing brand marks. If an image request is unavailable or blocked, the product text remains visible through the badge pseudo-element.
 
-For ChatGPT, the graphic is OpenAI's current Blossom symbol. The asset is OpenAI-authored, while Wikimedia Commons is used as the transport mirror because the OpenAI/ChatGPT web favicon endpoints are protected against anonymous cross-site requests. The Codex icon is taken from artwork published on OpenAI's Codex get-started page and cropped with CSS; if OpenAI replaces that source image, the crop may need an update even though the Viewer patch remains functional.
+For ChatGPT, the graphic is OpenAI's current Blossom symbol. The asset is OpenAI-authored, while Wikimedia Commons is used as the transport mirror because the OpenAI/ChatGPT web favicon endpoints are protected against anonymous cross-site requests. For Codex, production prefers a local copy of the official app asset already present in an installed OpenAI Codex package; the public patcher falls back to the Blossom when that file is unavailable.
 
 For a fully offline Viewer, vendor reviewed copies of the allowed brand assets into the deployment and change the CSS URLs to local files. Do that only after reviewing the applicable license/trademark terms; do not treat a public asset as an unrestricted software asset by default.
 
