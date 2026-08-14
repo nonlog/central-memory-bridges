@@ -1,0 +1,32 @@
+# Add these locations inside the existing machine-client server block.
+# Replace host/auth-file paths for your deployment.
+
+location ~ ^/\.well-known/oauth-(protected-resource|authorization-server)(/.*)?$ {
+    proxy_pass http://127.0.0.1:18790;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header Connection "";
+}
+
+location ^~ /chatgpt-mcp/oauth/authorize {
+    auth_basic "Central Memory MCP";
+    auth_basic_user_file /path/to/owner.htpasswd;
+    proxy_pass http://127.0.0.1:18790/oauth/authorize;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Auth-User $remote_user;
+    proxy_set_header Connection "";
+}
+
+location ^~ /chatgpt-mcp/ {
+    proxy_pass http://127.0.0.1:18790/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header Connection "";
+    proxy_buffering off;
+    proxy_read_timeout 3600s;
+}

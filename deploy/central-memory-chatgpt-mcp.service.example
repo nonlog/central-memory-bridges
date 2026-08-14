@@ -1,0 +1,39 @@
+[Unit]
+Description=Central claude-mem MCP bridge for ChatGPT Business
+After=network-online.target claude-mem.service
+Wants=network-online.target
+Requires=claude-mem.service
+
+[Service]
+Type=simple
+User=central-memory
+Group=central-memory
+WorkingDirectory=/usr/local/lib/central-memory-bridges/chatgpt-mcp
+EnvironmentFile=/etc/central-memory-bridges/chatgpt-mcp.env
+ExecStart=/usr/local/bin/node server.mjs
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectHostname=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
