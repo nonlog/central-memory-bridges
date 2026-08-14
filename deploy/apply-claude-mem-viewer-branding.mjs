@@ -10,7 +10,7 @@ const END = '/* central-memory-bridges: platform-source-icons:end */';
 const CSS = `
     ${START}
     /*
-     * Platform badges use current, project-controlled artwork where practical.
+     * Platform badges use current product/project artwork where practical.
      * If a remote image is blocked or unavailable, the text label remains usable.
      */
     .card-source {
@@ -94,11 +94,16 @@ const CSS = `
       font-size: 10px;
     }
 
-    /* ChatGPT: official ChatGPT site icon. */
+    /*
+     * ChatGPT: OpenAI's current Blossom symbol. The SVG is OpenAI-authored;
+     * Wikimedia Commons is used only as a stable transport mirror because
+     * chatgpt.com/openai.com favicon endpoints are Cloudflare-challenged for
+     * anonymous cross-site image requests.
+     */
     .source-chatgpt::before,
     .source-chatgpt-web::before,
     .source-ChatGPT::before {
-      background-image: url('https://chatgpt.com/favicon.ico');
+      background-image: url('https://commons.wikimedia.org/wiki/Special:Redirect/file/OpenAI_logo_2025_(symbol).svg');
     }
 
     /*
@@ -206,13 +211,14 @@ function usage(exitCode = 0) {
   node deploy/apply-claude-mem-viewer-branding.mjs --root <claude-mem-root> --check
 
 Options:
-  --root <path>  claude-mem checkout/plugin root. Can also use CLAUDE_MEM_ROOT.
+  --root <path>  claude-mem checkout/plugin/cache root. Can also use CLAUDE_MEM_ROOT.
   --check        Verify the current branding block is present; do not modify files.
   --help         Show this help.
 
-The script patches both source and already-built viewer HTML when present:
+The script patches source, marketplace, or cache viewer HTML when present:
   src/ui/viewer-template.html
   plugin/ui/viewer.html
+  ui/viewer.html
 `);
   process.exit(exitCode);
 }
@@ -277,6 +283,7 @@ const rootPath = path.resolve(root);
 const relativeFiles = [
   'src/ui/viewer-template.html',
   'plugin/ui/viewer.html',
+  'ui/viewer.html',
 ];
 const files = relativeFiles
   .map((relativePath) => ({ relativePath, filePath: path.join(rootPath, relativePath) }))
@@ -310,4 +317,4 @@ for (const { relativePath, filePath } of files) {
   console.log(`PATCHED ${relativePath}`);
 }
 
-console.log('Platform source icon branding applied. Refresh the claude-mem viewer; a worker restart is normally not required for static viewer HTML.');
+console.log('Platform source icon branding applied. Refresh the Viewer; if the live endpoint still serves the previous HTML, restart the claude-mem worker because some versions cache Viewer HTML at startup.');
