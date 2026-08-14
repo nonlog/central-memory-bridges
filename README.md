@@ -1,6 +1,6 @@
 # Central Memory Bridges
 
-Private integration source for connecting multiple AI clients to one central `claude-mem` Worker without creating additional active databases or Workers.
+Integration source for connecting multiple AI clients to one central `claude-mem` Worker without creating additional active databases or Workers. The repository may be public; production credentials and runtime secrets are never part of the source tree.
 
 ## Components
 
@@ -23,7 +23,7 @@ Claude Code/Codex and OpenClaw use their existing integrations and are not dupli
 
 ## Security
 
-- Keep this repository private.
+- This source repository may be public; treat every committed file as world-readable.
 - Never commit `.env`, OAuth secrets/tokens, Cloudflare credentials, htpasswd files, provider API keys, private keys, or exported conversations containing secrets.
 - The ChatGPT bridge is loopback-only behind the existing reverse proxy/tunnel and has no shell/filesystem/Docker/AgentDock tools.
 - Pi performs best-effort secret redaction before central persistence; this is defense in depth, not a substitute for credential hygiene.
