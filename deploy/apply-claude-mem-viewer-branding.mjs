@@ -11,7 +11,7 @@ const CSS = `
     ${START}
     /*
      * Platform badges use current product/project artwork where practical.
-     * If a remote image is blocked or unavailable, the text label remains usable.
+     * If an image is blocked or unavailable, the text label remains usable.
      */
     .card-source {
       display: inline-flex;
@@ -142,10 +142,14 @@ const CSS = `
       background-image: url('https://raw.githubusercontent.com/NousResearch/hermes-agent/main/website/static/img/favicon.svg');
     }
 
-    /* OpenClaw: official pixel-lobster artwork from the OpenClaw repository. */
+    /*
+     * OpenClaw: use the current official animated mascot/favicon from the
+     * installed OpenClaw control UI. Deployment places openclaw-favicon.svg
+     * beside viewer.html so the badge matches openclaw.ai and Control UI.
+     */
     .source-openclaw::before,
     .source-OpenClaw::before {
-      background-image: url('https://raw.githubusercontent.com/openclaw/openclaw/main/docs/assets/pixel-lobster.svg');
+      background-image: url('openclaw-favicon.svg');
     }
 
     .source-chatgpt,
