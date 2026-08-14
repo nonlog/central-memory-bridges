@@ -24,7 +24,7 @@ Claude Code/Codex and OpenClaw use their existing integrations and are not dupli
 
 ## claude-mem Viewer platform branding
 
-The Viewer branding overlay keeps the upstream card/data model intact and decorates existing `platform_source` badges for ChatGPT, Codex, Claude, Pi, Hermes, and OpenClaw. It patches both the source Viewer template and the already-built Viewer HTML when those files are present.
+The Viewer branding overlay keeps the upstream card/data model intact and decorates existing `platform_source` badges for ChatGPT, Codex, Claude, Pi, Hermes, and OpenClaw. It supports source templates, installed/marketplace Viewer HTML, and versioned cache Viewer HTML.
 
 Apply it from this repository with:
 
@@ -33,7 +33,7 @@ node deploy/apply-claude-mem-viewer-branding.mjs --root /path/to/claude-mem
 node deploy/apply-claude-mem-viewer-branding.mjs --root /path/to/claude-mem --check
 ```
 
-Reapply it after `claude-mem` upgrades. The current patch is idempotent and replaces its own marked CSS block rather than accumulating duplicate overrides.
+Reapply it after `claude-mem` upgrades. The current patch is idempotent and replaces its own marked CSS block rather than accumulating duplicate overrides. Some `claude-mem` versions cache Viewer HTML at Worker startup, so verify the live response and restart/reload the Worker only when the served HTML remains stale.
 
 See [`docs/CLAUDE_MEM_VIEWER_BRANDING.md`](docs/CLAUDE_MEM_VIEWER_BRANDING.md) for icon provenance, deployment behavior, verification, upgrade handling, rollback, external-asset behavior, and trademark notes.
 
@@ -51,5 +51,5 @@ Production integration was validated on 2026-08-14:
 
 - Hermes: real write + fresh-session auto-recall already verified.
 - Pi: real write to `pi-AgentDock`, then fresh session with all tools disabled recalled the previous marker using automatic context injection only; normal Pi continued central writes after `pi-hermes-memory` was removed.
-- ChatGPT MCP: server-side OAuth registration/PKCE/refresh-capable token flow, MCP initialize/tools-list, central-memory read, and real write were verified. Final write marker `CHATGPT_MCP_FINAL_E2E_20260814_0957` returned `commit_status=committed` with a central observation; a second fresh OAuth/MCP client read the marker back, and the async claude-mem summary completed. A real ChatGPT Web conversation remains the final client-side validation after registering the custom MCP App in the Business workspace.
-- Viewer branding patcher: Node syntax validation, source/live Viewer fixture patching, exact `--check` validation, and repeat-apply idempotence were verified on 2026-08-14. Production-host visual verification is tracked separately from the memory-pipeline validation above.
+- ChatGPT MCP: server-side OAuth registration/PKCE/refresh-capable token flow, MCP initialize/tools-list, central-memory read, and real write were verified. Final write marker `CHATGPT_MCP_FINAL_E2E_20260814_0957` returned `commit_status=committed` with a central observation; a second fresh OAuth/MCP client read the marker back, and the async claude-mem summary completed. A real ChatGPT Web conversation subsequently validated automatic Claude-mem recall after the custom MCP App was published in the Business workspace.
+- Viewer branding: the patcher passed Node syntax/idempotence checks, was deployed to the central `claude-mem` 13.15.0 marketplace and active cache Viewer, and the live Worker response was verified after a controlled restart. The existing weekly official-update flow now reapplies the platform identity layer and icon branding non-blockingly after upstream replacement.
