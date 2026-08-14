@@ -107,17 +107,19 @@ const CSS = `
     }
 
     /*
-     * Codex: current OpenAI Codex product artwork from the official get-started page.
-     * The source image includes surrounding campaign art, so background sizing crops
-     * the published app icon without redrawing it.
+     * Codex: use the official Codex app logo when the deployment provides
+     * codex-app-ga-logo.png beside viewer.html. The OpenAI Blossom is a clean
+     * fallback instead of cropping a promotional screenshot.
      */
     .source-codex::before,
     .source-codex-cli::before,
     .source-Codex::before {
       border-radius: 3px;
-      background-image: url('https://images.ctfassets.net/8su2tbn87fck/1AFmJlFiOIpmqlLkWyw9oR/4a5d06b26c38f883e1b8f25771b7876a/image.png');
-      background-size: 39px 39px;
-      background-position: -13px -4px;
+      background-image:
+        url('codex-app-ga-logo.png'),
+        url('https://commons.wikimedia.org/wiki/Special:Redirect/file/OpenAI_logo_2025_(symbol).svg');
+      background-size: contain, contain;
+      background-position: center, center;
     }
 
     /* Claude: official Claude web app icon. */
