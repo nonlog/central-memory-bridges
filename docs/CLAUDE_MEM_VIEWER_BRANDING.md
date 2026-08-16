@@ -12,7 +12,7 @@ Supported source names and aliases:
 | --- | --- | --- |
 | ChatGPT | `chatgpt`, `chatgpt-web`, `ChatGPT` | OpenAI's current Blossom symbol; OpenAI-authored SVG transported through Wikimedia Commons because anonymous cross-site requests to `chatgpt.com`/`openai.com` favicon endpoints are Cloudflare-challenged |
 | Codex | `codex`, `codex-cli`, `Codex` | Preferred: the official `codex-app-ga-logo--UgmJjKM.png` bundled with the OpenAI Codex app/extension, installed locally beside `viewer.html` as `codex-app-ga-logo.png`; fallback: OpenAI Blossom |
-| Claude | `claude`, `claude-code`, `Claude` | Claude web app favicon (`claude.ai`) |
+| Claude | `claude`, `claude-code`, `Claude` | Official `claude.ai/favicon.ico`, stored as a reviewed local `claude-favicon.ico`; remote official favicon is a fallback |
 | Pi | `pi`, `Pi` | `pi.dev/logo-auto.svg`, referenced as the Pi logo by the Pi repository README |
 | Hermes | `hermes`, `hermes-agent`, `Hermes` | Hermes Agent favicon from `NousResearch/hermes-agent` |
 | OpenClaw | `openclaw`, `OpenClaw` | Current official animated mascot/favicon from the installed OpenClaw Control UI, copied locally beside `viewer.html` as `openclaw-favicon.svg` |
@@ -57,6 +57,24 @@ codex-app-ga-logo.png
 
 The CSS tries that relative local asset first and uses the OpenAI Blossom as a clean fallback if the local Codex asset is absent. This keeps the public repository from redistributing a product binary asset while allowing deployments that already possess the official Codex package to use its real app logo.
 
+## Claude asset
+
+The initial Claude badge referenced `https://claude.ai/favicon.ico` directly from Viewer CSS. The source identification remained correct, but some browser/viewer combinations rendered an empty icon slot when the cross-origin favicon request did not paint reliably.
+
+Production now keeps a reviewed local copy of the official `claude.ai` favicon outside the public source repository:
+
+```text
+/srv/storage/shared/us-migrated/claude-mem/ui-overlays/claude-favicon.ico
+```
+
+Deployment copies it beside every active Viewer HTML as:
+
+```text
+claude-favicon.ico
+```
+
+The CSS uses the local file first and retains the official `claude.ai/favicon.ico` URL as a network fallback. This removes the normal runtime dependency on the external favicon while preserving the official artwork.
+
 ## OpenClaw asset
 
 The initial OpenClaw badge used `docs/assets/pixel-lobster.svg`. That file is an official repository asset, but it is not the current rounded red mascot shown by the OpenClaw website and Control UI, so the Viewer badge did not visually match the product.
@@ -97,32 +115,34 @@ Re-run the patcher after every `claude-mem` upgrade. The patch is delimited by t
 
 The patcher prefers the upstream `.card-title` CSS block as its insertion point and falls back to the closing `</style>` tag. It fails instead of silently editing an unknown structure when neither anchor exists.
 
-Production also wires the patcher into the existing non-blocking weekly `claude-mem` update flow after the source/platform identity overlay. Marketplace and versioned cache Viewer copies are reapplied after an official upgrade; the local Codex and OpenClaw assets are copied into those Viewer directories before branding is applied. Branding failure is logged but does not abort the official upgrade/rollback path.
+Production also wires the patcher into the existing non-blocking weekly `claude-mem` update flow after the source/platform identity overlay. Marketplace and versioned cache Viewer copies are reapplied after an official upgrade; local Codex, Claude, Hermes, and OpenClaw assets are copied into those Viewer directories before branding is applied. Branding failure is logged but does not abort the official upgrade/rollback path.
 
 ## Verification checklist
 
 1. Run the patcher with `--check` for the marketplace/installed root and any active cache roots.
 2. Fetch the live Viewer HTML and confirm it contains `central-memory-bridges: platform-source-icons:start`; restart/reload the Worker if the live response remains stale.
 3. Confirm `codex-app-ga-logo.png` returns HTTP 200 in deployments using the official local Codex asset.
-4. Confirm `openclaw-favicon.svg` returns HTTP 200 and, when sourced from a local OpenClaw install, matches the installed Control UI favicon hash.
-5. Open the central Viewer and hard-refresh it.
-6. Confirm recent ChatGPT, Codex, and OpenClaw Prompt/Summary/Observation cards show the expected icon plus correctly capitalized product name.
-7. Confirm Claude, Pi, and Hermes cards render correctly when those sources are present.
-8. Toggle light/dark mode and verify icon alignment and badge readability.
+4. Confirm `claude-favicon.ico` returns HTTP 200 and matches the reviewed persistent copy hash.
+5. Confirm `openclaw-favicon.svg` returns HTTP 200 and, when sourced from a local OpenClaw install, matches the installed Control UI favicon hash.
+6. Open the central Viewer and hard-refresh it.
+7. Confirm recent ChatGPT, Codex, Claude, and OpenClaw Prompt/Summary/Observation cards show the expected icon plus correctly capitalized product name.
+8. Confirm Pi and Hermes cards render correctly when those sources are present.
+9. Toggle light/dark mode and verify icon alignment and badge readability.
 
-## Production validation — 2026-08-14
+## Production validation — 2026-08-14 / 2026-08-16
 
-The overlay was deployed to the central `claude-mem` 13.15.0 Worker on 2026-08-14. Validation confirmed:
+The overlay was deployed to the central `claude-mem` 13.15.0 Worker and subsequently refined. Validation confirmed:
 
 - marketplace and active versioned cache Viewer HTML were patched and passed `--check`;
 - the live Worker initially served cached pre-patch HTML, then served both the existing platform-identity marker and the new icon-branding marker after a controlled Worker restart;
-- Worker health returned `status=ok`, version `13.15.0`, with MCP ready after restart;
+- Worker health returned `status=ok`, version `13.15.0`, with MCP ready after restarts;
 - the ChatGPT MCP bridge remained active, and Hermes dashboard/gateway services remained active;
 - the direct ChatGPT/OpenAI favicon endpoints returned HTTP 403 to anonymous requests, so the ChatGPT badge uses the OpenAI-authored Blossom SVG via the Wikimedia Commons redirect;
 - the first Codex implementation cropped an OpenAI promotional image and rendered incorrectly at badge size; it was replaced with the 104×104 `codex-app-ga-logo` asset extracted from the installed official OpenAI Codex package;
 - after the Codex fix, the local `codex-app-ga-logo.png` endpoint returned HTTP 200 and the live Viewer HTML referenced it directly;
 - the first OpenClaw implementation used the repository `pixel-lobster.svg`, which did not match the current rounded mascot shown by OpenClaw's website/Control UI;
-- the OpenClaw badge was switched to the installed Control UI `favicon.svg`, copied locally as `openclaw-favicon.svg`; the live endpoint returned HTTP 200, its SHA-256 exactly matched the installed OpenClaw source asset, and the live Viewer HTML referenced the local filename.
+- the OpenClaw badge was switched to the installed Control UI `favicon.svg`, copied locally as `openclaw-favicon.svg`; the live endpoint returned HTTP 200, its SHA-256 exactly matched the installed OpenClaw source asset, and the live Viewer HTML referenced the local filename;
+- on 2026-08-16 the Claude badge was switched from a runtime cross-origin `claude.ai/favicon.ico` request to a local reviewed copy named `claude-favicon.ico`; the live endpoint returned HTTP 200 and matched the persistent overlay copy byte-for-byte.
 
 ## Rollback
 
@@ -132,7 +152,7 @@ Restore the Viewer HTML files from the installed `claude-mem` version or deploym
 
 The overlay references product/project artwork rather than redrawing brand marks. If an image request is unavailable or blocked, the product text remains visible through the badge pseudo-element.
 
-For ChatGPT, the graphic is OpenAI's current Blossom symbol. The asset is OpenAI-authored, while Wikimedia Commons is used as the transport mirror because the OpenAI/ChatGPT web favicon endpoints are protected against anonymous cross-site requests. For Codex, production prefers a local copy of the official app asset already present in an installed OpenAI Codex package; the public patcher falls back to the Blossom when that file is unavailable. For OpenClaw, production uses a local copy of the official Control UI favicon already present in the installed OpenClaw package.
+For ChatGPT, the graphic is OpenAI's current Blossom symbol. The asset is OpenAI-authored, while Wikimedia Commons is used as the transport mirror because the OpenAI/ChatGPT web favicon endpoints are protected against anonymous cross-site requests. For Codex, production prefers a local copy of the official app asset already present in an installed OpenAI Codex package; the public patcher falls back to the Blossom when that file is unavailable. For Claude, production uses a local reviewed copy of the official `claude.ai` favicon and retains the official remote URL as a fallback. For OpenClaw, production uses a local copy of the official Control UI favicon already present in the installed OpenClaw package.
 
 For a fully offline Viewer, vendor reviewed copies of the allowed brand assets into the deployment and change the CSS URLs to local files. Do that only after reviewing the applicable license/trademark terms; do not treat a public asset as an unrestricted software asset by default.
 
