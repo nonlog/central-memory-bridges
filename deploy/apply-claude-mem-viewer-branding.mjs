@@ -122,11 +122,19 @@ const CSS = `
       background-position: center, center;
     }
 
-    /* Claude: official Claude web app icon. */
+    /*
+     * Claude: use a local reviewed copy of the official claude.ai favicon so
+     * badge rendering does not depend on a cross-origin request at view time.
+     * The remote official favicon remains a network fallback.
+     */
     .source-claude::before,
     .source-claude-code::before,
     .source-Claude::before {
-      background-image: url('https://claude.ai/favicon.ico');
+      background-image:
+        url('claude-favicon.ico'),
+        url('https://claude.ai/favicon.ico');
+      background-size: contain, contain;
+      background-position: center, center;
     }
 
     /* Pi: official project logo referenced by the Pi repository README. */
