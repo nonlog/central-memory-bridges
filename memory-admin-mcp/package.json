@@ -1,0 +1,17 @@
+{
+  "name": "central-memory-admin-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Exact-ID claude-mem deletion MCP for Claude Code and Codex without modifying their official claude-mem integrations.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "zod": "4.1.12"
+  }
+}
