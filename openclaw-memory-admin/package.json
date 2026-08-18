@@ -1,0 +1,23 @@
+{
+  "name": "openclaw-central-memory-admin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Optional exact-ID claude-mem deletion tool for OpenClaw without modifying the official claude-mem plugin.",
+  "type": "module",
+  "files": [
+    "dist",
+    "openclaw.plugin.json",
+    "README.md"
+  ],
+  "dependencies": {
+    "typebox": "^1.1.38"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.5.17"
+  },
+  "openclaw": {
+    "extensions": [
+      "./dist/index.js"
+    ]
+  }
+}
