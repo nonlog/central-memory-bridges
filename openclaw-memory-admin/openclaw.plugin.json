@@ -1,0 +1,30 @@
+{
+  "id": "central-memory-admin",
+  "name": "Central Memory Admin",
+  "description": "Adds exact-ID destructive administration for claude-mem without changing the official OpenClaw claude-mem plugin.",
+  "version": "0.1.0",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "workerUrl": {
+        "type": "string",
+        "minLength": 1,
+        "description": "claude-mem Worker base URL. Defaults to CLAUDE_MEM_WORKER_URL or http://127.0.0.1:37777."
+      }
+    }
+  },
+  "activation": {
+    "onStartup": true
+  },
+  "contracts": {
+    "tools": [
+      "claude_mem_forget"
+    ]
+  },
+  "toolMetadata": {
+    "claude_mem_forget": {
+      "optional": true
+    }
+  }
+}
