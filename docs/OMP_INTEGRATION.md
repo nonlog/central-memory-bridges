@@ -42,7 +42,7 @@ Source file:
 omp-extension/index.ts
 ```
 
-Reload OMP extensions or restart OMP after installing/changing the extension. A newly opened process will also inherit updated user-level environment variables.
+Restart OMP after installing/changing the extension. A newly opened process will also inherit updated user-level environment variables.
 
 ## Memory lifecycle
 
@@ -73,11 +73,16 @@ The bridge always sends explicit `platformSource: "omp"`. The central deployment
 
 ## Tools
 
-The extension registers three OMP tools:
+The extension registers four OMP tools:
 
 - `claude_mem_search` — cross-project central-memory search (`read`).
 - `claude_mem_recent` — recent memory for one known project (`read`).
 - `claude_mem_remember` — explicit durable-memory write (`write`).
+- `claude_mem_forget` — exact-ID deletion for `observation`, `summary`, or `prompt` records (`write`). The agent must identify exact records first and must never guess IDs.
+
+The hidden recall message declares these OMP-native tool names as authoritative and removes stale `get_observations` / `mem-search` routing hints emitted by generic claude-mem context. This prevents OMP from trying Claude-side raw MCP names such as `mcp__claude_mem_*` when those tools are not mounted.
+
+When `claude_mem_forget` runs, automatic capture of that cleanup turn is suppressed once so deleting a test or unwanted memory does not immediately create a replacement meta-memory describing the deletion operation itself.
 
 The extension also performs best-effort secret redaction before sending captured text to the central Worker. This is defense in depth, not a substitute for keeping credentials out of prompts.
 
@@ -119,13 +124,19 @@ The 2026-08-18 production validation confirmed:
 - a later real OMP session exposed an endpoint-resolution bug: the OMP process had inherited an older environment snapshot and logged `CLAUDE_MEM_WORKER_URL is not configured` even though the Windows user environment had subsequently been updated;
 - the production fix added the URL-file fallback described above and moved terminal automatic capture onto `message_end`, which OMP awaits before the process can exit;
 - with `CLAUDE_MEM_WORKER_URL` deliberately removed from the test process, a real OMP run successfully resolved the URL file, generated normally, automatically captured the terminal answer, and used the explicit remember tool in the same run;
-- marker `OMP_AUTO_MEMORY_WRITE_OK_20260818_1440` produced central observations `#8487`, `#8488`, and `#8489`, all attributable to `platform_source=omp`; `#8487`/`#8489` were under `omp-general` and `#8488` was the explicit remember record;
+- marker `OMP_AUTO_MEMORY_WRITE_OK_20260818_1440` produced central observations `#8487`, `#8488`, and `#8489`, all attributable to `platform_source=omp`;
+- Worker 13.15.0 exposes `DELETE /api/observation/:id`, `DELETE /api/summary/:id`, and `DELETE /api/prompt/:id`; OMP now uses those official routes through `claude_mem_forget` rather than editing SQLite directly;
+- the test-memory cleanup flow deleted exact observation/summary/prompt IDs and verified the deleted records returned 404 afterwards;
 - `/api/projects` exposes `omp` independently from Pi;
 - the live `omp-favicon.svg` endpoint returned HTTP 200 and matched the persistent reviewed copy byte-for-byte;
 - marketplace and active versioned-cache Viewer copies passed the branding check after deployment.
 
 ## Troubleshooting
 
-If OMP can read memory through an MCP search tool but automatic recall/capture logs `CLAUDE_MEM_WORKER_URL is not configured`, the two paths are different integrations: MCP read availability does not prove that the OMP central-memory extension has a Worker endpoint. Check the OMP log under `~/.omp/logs`, verify the environment or `~/.omp/agent/claude-mem-worker-url`, then reload extensions/restart OMP.
+If OMP can read memory through an MCP search tool but automatic recall/capture logs `CLAUDE_MEM_WORKER_URL is not configured`, the two paths are different integrations: MCP read availability does not prove that the OMP central-memory extension has a Worker endpoint. Check the OMP log under `~/.omp/logs`, verify the environment or `~/.omp/agent/claude-mem-worker-url`, then restart OMP.
+
+If OMP reports `No such tool: xd://mcp__claude_mem_...` while the native `claude_mem_*` tools are mounted, the model followed a stale generic claude-mem routing hint. Current extension versions sanitize those hints and inject the OMP-native tool names as authoritative. Restart OMP after upgrading the extension.
+
+For deletion, use `claude_mem_search` or `claude_mem_recent` to identify exact record IDs, then call `claude_mem_forget`. The forget tool intentionally requires exact IDs and supports observations, summaries, and prompts. It does not perform fuzzy destructive deletion.
 
 `get_observations` accepts numeric observation IDs only. Search results prefixed with `P` are prompt IDs and cannot be passed to `get_observations`; this validation error is unrelated to OMP automatic memory capture.
