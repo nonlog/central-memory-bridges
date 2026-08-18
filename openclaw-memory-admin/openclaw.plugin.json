@@ -5,14 +5,14 @@
   "version": "0.1.0",
   "configSchema": {
     "type": "object",
-    "additionalProperties": false,
     "properties": {
       "workerUrl": {
         "type": "string",
         "minLength": 1,
         "description": "claude-mem Worker base URL. Defaults to CLAUDE_MEM_WORKER_URL or http://127.0.0.1:37777."
       }
-    }
+    },
+    "additionalProperties": false
   },
   "activation": {
     "onStartup": true
