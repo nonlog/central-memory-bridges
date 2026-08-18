@@ -6,7 +6,7 @@
 
 The integration was implemented and validated with OMP 0.53.2 on 2026-08-18.
 
-OMP's extension API differs from the older Pi Coding Agent API, so this is a separate extension rather than a copy of `pi-extension/`. In particular, OMP exposes `agent_end` with `willContinue` instead of the legacy Pi `agent_settled` event.
+OMP's extension API differs from the older Pi Coding Agent API, so this is a separate extension rather than a copy of `pi-extension/`. In particular, OMP exposes `agent_end` with `willContinue` instead of the legacy Pi `agent_settled` event, and its settled `agent_end` notification can be detached from the main event path. The bridge therefore commits terminal assistant text from the awaited `message_end` event and keeps `turn_end`, `agent_end`, and `session_shutdown` as fallback/flush paths.
 
 ## Install
 
@@ -20,7 +20,15 @@ Set the central Worker endpoint in the environment:
 )
 ```
 
-If the Worker requires a bearer token, set `CLAUDE_MEM_WORKER_TOKEN` through the host's secret-management mechanism. Do not commit it to this repository.
+A long-running terminal can retain the environment snapshot from before that user variable was created. To avoid making memory availability depend on terminal restart timing, the extension also supports a non-secret URL file. When `CLAUDE_MEM_WORKER_URL` is absent from the OMP process, it reads:
+
+```text
+~/.omp/agent/claude-mem-worker-url
+```
+
+or the path named by `CLAUDE_MEM_WORKER_URL_FILE`. The file should contain only the central Worker base URL and a trailing newline is optional. Environment configuration wins when both are present.
+
+If the Worker requires a bearer token, set `CLAUDE_MEM_WORKER_TOKEN` through the host's secret-management mechanism. Do not store a bearer token in the URL file and do not commit it to this repository.
 
 Copy the extension into OMP's user extension directory:
 
@@ -34,7 +42,7 @@ Source file:
 omp-extension/index.ts
 ```
 
-Restart OMP after installing the extension or changing user-level environment variables.
+Reload OMP extensions or restart OMP after installing/changing the extension. A newly opened process will also inherit updated user-level environment variables.
 
 ## Memory lifecycle
 
@@ -42,9 +50,10 @@ The bridge deliberately captures only the durable conversational boundary, not e
 
 - `session_start` — resolves the OMP session/project identity.
 - `before_agent_start` — initializes the central session, fetches project-scoped context, and injects it as a hidden OMP custom message.
-- `turn_end` — remembers the latest assistant text for the current run.
-- `agent_end` — when `willContinue` is false, writes the final assistant observation and queues central summarization.
-- `session_shutdown` — best-effort final flush if a completed turn is still pending.
+- `message_end` — records assistant text; when the assistant message has a terminal stop reason (`stop`, `end_turn`, or `length`), the bridge immediately writes the final assistant observation and queues central summarization on OMP's awaited event path.
+- `turn_end` — fallback tracking for the latest assistant text.
+- `agent_end` — final fallback/flush when `willContinue` is false.
+- `session_shutdown` — final best-effort flush if a completed turn is still pending.
 
 Automatic capture excludes tool outputs. This keeps the central memory pool focused on user intent, final work results, decisions, and summaries while OMP retains its own local transcript/tool history.
 
@@ -95,18 +104,28 @@ A `claude-mem` upgrade can replace the bundled Viewer and Worker files. Producti
 1. platform-source registry/fallback logic, including `omp`;
 2. Viewer icon/name branding, including the local `omp-favicon.svg` asset.
 
+The OMP extension itself lives under the OMP user extension directory and is not replaced by a `claude-mem` Worker upgrade. Keep its source synchronized with this repository when deploying bridge fixes.
+
 The overlay is intentionally non-blocking relative to the official `claude-mem` updater: an upstream UI-layout change should produce a warning rather than prevent the official upgrade or rollback.
 
 ## Validation
 
 The 2026-08-18 production validation confirmed:
 
-- a real OMP process loaded the extension and created central sessions under project `omp-AgentDock` with `platform_source=omp` before provider execution;
-- an extension lifecycle harness exercised OMP's `before_agent_start`, `turn_end`, final `agent_end`, and `session_shutdown` path against the real central Worker;
+- a real OMP process loaded the extension and created central sessions with `platform_source=omp` before provider execution;
+- an extension lifecycle harness exercised OMP recall/capture against the real central Worker;
 - automatic context injection returned non-empty central context;
-- the test marker `OMP_CMEM_BRIDGE_E2E_20260818_1149` produced central observation `#8454` under `platform_source=omp` and was searchable through the central observation-search API;
-- `/api/projects` listed `omp` as an independent source with `omp-AgentDock` in `projectsBySource`;
+- the original integration marker `OMP_CMEM_BRIDGE_E2E_20260818_1149` produced central observation `#8454` under `platform_source=omp`;
+- a later real OMP session exposed an endpoint-resolution bug: the OMP process had inherited an older environment snapshot and logged `CLAUDE_MEM_WORKER_URL is not configured` even though the Windows user environment had subsequently been updated;
+- the production fix added the URL-file fallback described above and moved terminal automatic capture onto `message_end`, which OMP awaits before the process can exit;
+- with `CLAUDE_MEM_WORKER_URL` deliberately removed from the test process, a real OMP run successfully resolved the URL file, generated normally, automatically captured the terminal answer, and used the explicit remember tool in the same run;
+- marker `OMP_AUTO_MEMORY_WRITE_OK_20260818_1440` produced central observations `#8487`, `#8488`, and `#8489`, all attributable to `platform_source=omp`; `#8487`/`#8489` were under `omp-general` and `#8488` was the explicit remember record;
+- `/api/projects` exposes `omp` independently from Pi;
 - the live `omp-favicon.svg` endpoint returned HTTP 200 and matched the persistent reviewed copy byte-for-byte;
 - marketplace and active versioned-cache Viewer copies passed the branding check after deployment.
 
-The OMP model/provider configured on that Windows installation returned an unrelated provider `401 Invalid token` during the real model-generation smoke test. That did not affect extension loading, central session initialization, source attribution, the separately exercised capture path, or Viewer deployment; provider authentication is outside this bridge.
+## Troubleshooting
+
+If OMP can read memory through an MCP search tool but automatic recall/capture logs `CLAUDE_MEM_WORKER_URL is not configured`, the two paths are different integrations: MCP read availability does not prove that the OMP central-memory extension has a Worker endpoint. Check the OMP log under `~/.omp/logs`, verify the environment or `~/.omp/agent/claude-mem-worker-url`, then reload extensions/restart OMP.
+
+`get_observations` accepts numeric observation IDs only. Search results prefixed with `P` are prompt IDs and cannot be passed to `get_observations`; this validation error is unrelated to OMP automatic memory capture.
