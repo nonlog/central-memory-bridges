@@ -223,6 +223,44 @@ const CSS = `
       color: #ff9b8f;
       border-color: rgba(255, 155, 143, 0.22);
     }
+
+    /*
+     * OMP (Oh My Pi): use the current official omp.sh favicon. Deployment
+     * places a reviewed local copy beside viewer.html; omp.sh is a fallback.
+     */
+    .source-omp,
+    .source-oh-my-pi,
+    .source-OMP {
+      font-size: 0;
+      background: rgba(155, 77, 255, 0.10);
+      color: #8b3fd6;
+      border-color: rgba(155, 77, 255, 0.24);
+    }
+
+    .source-omp::after,
+    .source-oh-my-pi::after,
+    .source-OMP::after {
+      content: 'OMP';
+      font-size: 10px;
+    }
+
+    .source-omp::before,
+    .source-oh-my-pi::before,
+    .source-OMP::before {
+      border-radius: 3px;
+      background-image:
+        url('omp-favicon.svg'),
+        url('https://omp.sh/favicon.svg');
+      background-size: contain, contain;
+      background-position: center, center;
+    }
+
+    [data-theme='dark'] .source-omp,
+    [data-theme='dark'] .source-oh-my-pi,
+    [data-theme='dark'] .source-OMP {
+      color: #d8b4fe;
+      border-color: rgba(216, 180, 254, 0.24);
+    }
     ${END}
 `;
 
