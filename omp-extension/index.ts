@@ -4,11 +4,23 @@
 // after the OMP agent loop settles. Tool outputs are intentionally not persisted here.
 
 import crypto from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 
-const WORKER = (process.env.CLAUDE_MEM_WORKER_URL || "").replace(/\/$/, "");
+const WORKER_URL_FILE = process.env.CLAUDE_MEM_WORKER_URL_FILE || path.join(os.homedir(), ".omp", "agent", "claude-mem-worker-url");
 const WORKER_TOKEN = process.env.CLAUDE_MEM_WORKER_TOKEN || "";
+
+function resolveWorkerUrl(): string {
+  const envUrl = String(process.env.CLAUDE_MEM_WORKER_URL || "").trim();
+  if (envUrl) return envUrl.replace(/\/$/, "");
+  try {
+    const fileUrl = fs.readFileSync(WORKER_URL_FILE, "utf8").trim();
+    if (fileUrl) return fileUrl.replace(/\/$/, "");
+  } catch {}
+  throw new Error(`CLAUDE_MEM_WORKER_URL is not configured and ${WORKER_URL_FILE} is unavailable`);
+}
 const BASE_PROJECT = "omp";
 const PLATFORM_SOURCE = "omp";
 const SEARCH_TIMEOUT_MS = 45_000;
@@ -81,11 +93,11 @@ function extractWorkerText(raw: any): string {
 }
 
 async function request(route: string, init: RequestInit = {}, timeoutMs = HTTP_TIMEOUT_MS): Promise<any> {
-  if (!WORKER) throw new Error("CLAUDE_MEM_WORKER_URL is not configured");
+  const worker = resolveWorkerUrl();
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (WORKER_TOKEN) headers.authorization = `Bearer ${WORKER_TOKEN}`;
   Object.assign(headers, init.headers || {});
-  const response = await fetch(`${WORKER}${route}`, {
+  const response = await fetch(`${worker}${route}`, {
     ...init,
     headers,
     signal: AbortSignal.timeout(timeoutMs),
@@ -211,6 +223,17 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
     } catch (error) {
       pi.logger.debug("central claude-mem recall failed", { error: String(error) });
       return;
+    }
+  });
+
+  pi.on("message_end", async event => {
+    const message = (event as any).message;
+    const text = assistantMessageText(message);
+    if (!text) return;
+    pendingAssistant = text;
+    const stopReason = String(message?.stopReason || "");
+    if (stopReason === "stop" || stopReason === "end_turn" || stopReason === "length") {
+      await queueCapture();
     }
   });
 
