@@ -92,6 +92,14 @@ function extractWorkerText(raw: any): string {
   return JSON.stringify(raw);
 }
 
+function sanitizeInjectedContext(text: string): string {
+  return String(text || "")
+    .split(/\r?\n/)
+    .filter(line => !/Fetch details:.*get_observations|Access .*get_observations|mem-search skill/i.test(line))
+    .join("\n")
+    .trim();
+}
+
 async function request(route: string, init: RequestInit = {}, timeoutMs = HTTP_TIMEOUT_MS): Promise<any> {
   const worker = resolveWorkerUrl();
   const headers: Record<string, string> = { "content-type": "application/json" };
@@ -127,6 +135,7 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
   let pendingPrompt = "";
   let pendingAssistant = "";
   let pendingCapture = false;
+  let suppressCurrentCapture = false;
   let captureQueue: Promise<void> = Promise.resolve();
 
   const refreshSession = (ctx: any) => {
@@ -142,6 +151,10 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
     pendingPrompt = "";
     pendingAssistant = "";
     pendingCapture = false;
+    if (suppressCurrentCapture) {
+      suppressCurrentCapture = false;
+      return;
+    }
     if (isTrivialPrompt(prompt) || !assistant.trim()) return;
 
     const safeAssistant = redactSecrets(assistant).slice(0, 24_000);
@@ -211,12 +224,12 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
       );
       const projects = `${BASE_PROJECT},${activeProject}`;
       const context = await request(`/api/context/inject?${new URLSearchParams({ projects }).toString()}`, {}, 10_000);
-      const text = extractWorkerText(context).trim().slice(0, MAX_CONTEXT_CHARS);
+      const text = sanitizeInjectedContext(extractWorkerText(context)).slice(0, MAX_CONTEXT_CHARS);
       if (!text) return;
       return {
         message: {
           customType: "central-claude-mem-context",
-          content: `Central memory context for this OMP turn (past records; prefer newer verified facts when conflicts exist):\n\n${text}`,
+          content: `Central memory context for this OMP turn (past records; prefer newer verified facts when conflicts exist).\n\nOMP memory tool routing for this session is authoritative: use only claude_mem_search, claude_mem_recent, claude_mem_remember, and claude_mem_forget. Do not call legacy/raw mcp__claude_mem_* tools, get_observations, the mem-search skill, or a local claude-mem CLI unless those tools are explicitly mounted in this OMP session.\n\n${text}`,
           display: false,
         },
       };
@@ -355,6 +368,51 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
       } catch (error: any) {
         return { content: [{ type: "text", text: `Central memory write failed: ${error.message}` }], details: { error: true } };
       }
+    },
+  });
+
+  pi.registerTool({
+    name: "claude_mem_forget",
+    label: "Central Memory Forget",
+    description: "Delete specific central claude-mem records by exact IDs. First identify the records with claude_mem_search/claude_mem_recent; never guess IDs. Supports observation, summary, and prompt records.",
+    approval: "write",
+    parameters: z.object({
+      items: z
+        .array(
+          z.object({
+            type: z.enum(["observation", "summary", "prompt"]),
+            id: z.number().int().positive(),
+          }),
+        )
+        .min(1)
+        .max(50),
+    }),
+    async execute(_toolCallId, params) {
+      // A deletion/cleanup turn should not immediately recreate a meta-memory
+      // describing the deletion operation itself.
+      suppressCurrentCapture = true;
+      const deleted: Array<{ type: string; id: number }> = [];
+      const failed: Array<{ type: string; id: number; error: string }> = [];
+      for (const item of params.items) {
+        try {
+          await request(`/api/${item.type}/${item.id}`, { method: "DELETE" }, 12_000);
+          deleted.push({ type: item.type, id: item.id });
+        } catch (error: any) {
+          failed.push({ type: item.type, id: item.id, error: String(error?.message || error) });
+        }
+      }
+      const lines = [
+        `Deleted ${deleted.length} central-memory record(s).`,
+        ...deleted.map(item => `- ${item.type} #${item.id}`),
+      ];
+      if (failed.length) {
+        lines.push(`Failed ${failed.length} record(s):`);
+        lines.push(...failed.map(item => `- ${item.type} #${item.id}: ${item.error}`));
+      }
+      return {
+        content: [{ type: "text", text: lines.join("\n") }],
+        details: { deleted, failed, source: "central-claude-mem" },
+      };
     },
   });
 }
