@@ -65,7 +65,7 @@ See [`docs/CLAUDE_MEM_VIEWER_BRANDING.md`](docs/CLAUDE_MEM_VIEWER_BRANDING.md) f
 
 - This source repository may be public; treat every committed file as world-readable.
 - Never commit `.env`, OAuth secrets/tokens, Cloudflare credentials, htpasswd files, provider API keys, private keys, or exported conversations containing secrets.
-- The ChatGPT bridge is loopback-only behind the existing reverse proxy/tunnel and has no shell/filesystem/Docker/AgentDock tools.
+- The ChatGPT bridge is loopback-only behind the existing reverse proxy/tunnel and has no shell/filesystem/Docker/AgentDock tools. OAuth `memory:read` permits recall/search only; `memory_capture` and `memory_remember` additionally require `memory:write` at tool execution time.
 - Pi and OMP perform best-effort secret redaction before central persistence; this is defense in depth, not a substitute for credential hygiene.
 - Treat `claude_mem_forget` as a destructive write tool. Require exact IDs, inspect records first, and do not add fuzzy/project-wide deletion shortcuts.
 - Prefer loopback Worker access for the OpenClaw admin plugin when OpenClaw and `claude-mem` run on the same host.

@@ -167,13 +167,14 @@ async function writeTurn({ userMessage, assistantMessage, project = DEFAULT_PROJ
   const assistant = redactSecrets(assistantMessage).slice(0, 24000);
   if (!user.trim() && !assistant.trim()) throw new Error('nothing to store');
   await worker('/api/sessions/init', {
-    method: 'POST', body: JSON.stringify({ contentSessionId: sid, project: p, prompt: user || '[memory capture]' }),
+    method: 'POST', body: JSON.stringify({ contentSessionId: sid, project: p, platformSource: 'chatgpt', prompt: user || '[memory capture]' }),
   }, 8000);
   if (assistant.trim()) {
     await worker('/api/sessions/observations', {
       method: 'POST',
       body: JSON.stringify({
         contentSessionId: sid,
+        platformSource: 'chatgpt',
         tool_name: 'assistant_message',
         tool_input: { source: 'chatgpt-web' },
         tool_response: assistant.slice(0, 1000),
@@ -182,7 +183,7 @@ async function writeTurn({ userMessage, assistantMessage, project = DEFAULT_PROJ
     }, 15000);
   }
   await worker('/api/sessions/summarize', {
-    method: 'POST', body: JSON.stringify({ contentSessionId: sid, last_assistant_message: assistant.slice(0, 4000) }),
+    method: 'POST', body: JSON.stringify({ contentSessionId: sid, platformSource: 'chatgpt', last_assistant_message: assistant.slice(0, 4000) }),
   }, 45000);
   const observationIds = assistant.trim() ? await waitForObservation(p, sid) : [];
   return {
@@ -195,7 +196,12 @@ async function writeTurn({ userMessage, assistantMessage, project = DEFAULT_PROJ
   };
 }
 
-function makeServer() {
+function requireToolScope(scopes, requiredScope) {
+  if (!scopes.has(requiredScope)) throw new Error(`${requiredScope} scope required`);
+}
+
+function makeServer(scopes = []) {
+  const grantedScopes = new Set(scopes);
   const server = new McpServer(
     { name: 'central-claude-mem', version: '1.0.0' },
     {
@@ -283,6 +289,7 @@ function makeServer() {
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   }, async ({ user_message, assistant_message, project = DEFAULT_PROJECT, session_id }) => {
+    requireToolScope(grantedScopes, 'memory:write');
     const result = await writeTurn({ userMessage: user_message, assistantMessage: assistant_message, project, sessionId: session_id });
     return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
   });
@@ -293,6 +300,7 @@ function makeServer() {
     inputSchema: { content: z.string().min(1).max(20000), project: z.string().max(96).optional() },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   }, async ({ content, project = DEFAULT_PROJECT }) => {
+    requireToolScope(grantedScopes, 'memory:write');
     const result = await writeTurn({ userMessage: 'Remember this durable information for future sessions.', assistantMessage: content, project });
     return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
   });
@@ -433,14 +441,15 @@ app.get('/observation/:id', requireBearer, async (req, res) => {
 });
 
 app.post('/mcp', requireBearer, async (req, res) => {
-  const server = makeServer();
+  const scopes = String(req.centralMemoryAuth.scope || '').split(/\s+/).filter(Boolean);
+  const server = makeServer(scopes);
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   try {
     await server.connect(transport);
     await transport.handleRequest(req, res, req.body, {
       token: String(req.get('authorization')).replace(/^Bearer\s+/i, ''),
       clientId: req.centralMemoryAuth.client_id,
-      scopes: String(req.centralMemoryAuth.scope).split(/\s+/),
+      scopes,
     });
   } catch (error) {
     console.error('MCP request failed:', error);
