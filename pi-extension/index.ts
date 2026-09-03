@@ -22,6 +22,21 @@ const MAX_TOOL_PAYLOAD_CHARS = 16_000;
 const MAX_TOOL_TEXT_CHARS = 12_000;
 const SEMANTIC_INJECT = parseBool(process.env.CLAUDE_MEM_SEMANTIC_INJECT, false);
 const SEMANTIC_INJECT_LIMIT = clampInt(process.env.CLAUDE_MEM_SEMANTIC_INJECT_LIMIT, 5, 1, 20);
+const DEFAULT_SKIP_TOOLS = [
+  "ListMcpResourcesTool",
+  "SlashCommand",
+  "Skill",
+  "TodoWrite",
+  "AskUserQuestion",
+  "todo",
+  "ask_user_question",
+];
+const SKIP_TOOLS = new Set(
+  (process.env.CLAUDE_MEM_SKIP_TOOLS || DEFAULT_SKIP_TOOLS.join(","))
+    .split(",")
+    .map((name) => name.trim().toLowerCase())
+    .filter(Boolean),
+);
 
 const SECRET_PATTERNS: RegExp[] = [
   /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
@@ -157,7 +172,9 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
   let pendingPrompt = "";
   let pendingAssistant = "";
   let pendingSummary = false;
+  let observedModel = "";
   const inFlight = new Set<Promise<void>>();
+  let backgroundTail: Promise<void> = Promise.resolve();
 
   const refreshSession = (ctx: any, cwd?: string) => {
     const resolvedCwd = cwd || ctx?.cwd || process.cwd();
@@ -166,13 +183,13 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
   };
 
   const background = (task: () => Promise<unknown>) => {
-    let tracked: Promise<void>;
-    tracked = Promise.resolve()
-      .then(task)
+    const tracked = backgroundTail
+      .then(task, task)
       .then(() => undefined)
-      .catch(() => undefined)
-      .finally(() => inFlight.delete(tracked));
+      .catch(() => undefined);
+    backgroundTail = tracked;
     inFlight.add(tracked);
+    void tracked.then(() => inFlight.delete(tracked));
   };
 
   const flushBackground = async (timeoutMs = SHUTDOWN_FLUSH_MS) => {
@@ -201,9 +218,11 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
     if (!pendingSummary) return;
     const assistant = pendingAssistant.trim();
     const sid = activeSessionId;
+    const model = observedModel;
     pendingPrompt = "";
     pendingAssistant = "";
     pendingSummary = false;
+    observedModel = "";
     if (!assistant) return;
 
     const safeAssistant = redactSecrets(assistant).slice(0, MAX_ASSISTANT_CHARS);
@@ -216,6 +235,7 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
             contentSessionId: sid,
             last_assistant_message: safeAssistant,
             platformSource: PLATFORM_SOURCE,
+            observedModel: model || undefined,
           }),
         },
         HTTP_TIMEOUT_MS,
@@ -228,6 +248,7 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
     pendingPrompt = "";
     pendingAssistant = "";
     pendingSummary = false;
+    observedModel = "";
     await loadSessionContext();
   });
 
@@ -241,6 +262,7 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
     pendingPrompt = String(event.prompt || "");
     pendingAssistant = "";
     pendingSummary = !isTrivialPrompt(pendingPrompt);
+    observedModel = pendingSummary ? String(ctx.model?.id || "") : "";
     if (!pendingSummary) return;
 
     const safePrompt = redactSecrets(pendingPrompt).slice(0, MAX_PROMPT_CHARS);
@@ -305,7 +327,7 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
 
   pi.on("tool_result", async (event, ctx) => {
     const toolName = String((event as any).toolName || "");
-    if (!toolName || toolName.startsWith("claude_mem_")) return;
+    if (!toolName || toolName.startsWith("claude_mem_") || SKIP_TOOLS.has(toolName.toLowerCase())) return;
 
     const sid = activeSessionId;
     const cwd = ctx.cwd || process.cwd();
