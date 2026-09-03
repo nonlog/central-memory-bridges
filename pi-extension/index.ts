@@ -182,7 +182,7 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
     activeSessionId = contentSessionId(ctx, "pi-" + crypto.randomUUID());
   };
 
-  const background = (task: () => Promise<unknown>) => {
+  const background = (task: () => Promise<unknown>): Promise<void> => {
     const tracked = backgroundTail
       .then(task, task)
       .then(() => undefined)
@@ -190,6 +190,7 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
     backgroundTail = tracked;
     inFlight.add(tracked);
     void tracked.then(() => inFlight.delete(tracked));
+    return tracked;
   };
 
   const flushBackground = async (timeoutMs = SHUTDOWN_FLUSH_MS) => {
@@ -214,8 +215,8 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
     }
   };
 
-  const queueSummary = () => {
-    if (!pendingSummary) return;
+  const queueSummary = (): Promise<void> => {
+    if (!pendingSummary) return Promise.resolve();
     const assistant = pendingAssistant.trim();
     const sid = activeSessionId;
     const model = observedModel;
@@ -223,10 +224,10 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
     pendingAssistant = "";
     pendingSummary = false;
     observedModel = "";
-    if (!assistant) return;
+    if (!assistant) return Promise.resolve();
 
     const safeAssistant = redactSecrets(assistant).slice(0, MAX_ASSISTANT_CHARS);
-    background(() =>
+    return background(() =>
       request(
         "/api/sessions/summarize",
         {
@@ -369,11 +370,15 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
   });
 
   pi.on("agent_settled", async () => {
-    queueSummary();
+    // Match upstream Stop-hook semantics: wait only until all observations and
+    // the summary request have reached the Worker's queue. The expensive AI
+    // summarization remains asynchronous inside claude-mem. This ordering also
+    // prevents the next /sessions/init from advancing promptNumber first.
+    await queueSummary();
   });
 
   pi.on("session_shutdown", async () => {
-    queueSummary();
+    await queueSummary();
     await flushBackground();
   });
 
