@@ -5,7 +5,7 @@ Integration source for connecting multiple AI clients to one central `claude-mem
 ## Components
 
 - `hermes-provider/` — Hermes native `MemoryProvider` adapter. Automatic project-scoped recall and automatic turn capture; explicit cross-project search/recent tools.
-- `pi-extension/` — Pi Coding Agent extension. `before_agent_start` automatic context injection, automatic post-run capture, and explicit search/recent/remember tools.
+- `pi-extension/` — Pi Coding Agent extension aligned to the upstream `claude-mem` lifecycle: one-shot session-start context, per-prompt session init with optional semantic injection, asynchronous tool-result observation capture and settled-run summaries, plus explicit search/recent/remember tools.
 - `omp-extension/` — Oh My Pi (OMP) extension. Uses OMP's native extension lifecycle for automatic recall/final-turn capture plus explicit search/recent/remember/forget tools, with `platform_source=omp` kept distinct from Pi.
 - `chatgpt-mcp/` — least-privilege remote MCP/OAuth bridge for ChatGPT Business. Exposes only central-memory operations, not host administration.
 - `memory-admin-mcp/` — standalone stdio MCP for Claude Code and Codex that adds only exact-ID `claude_mem_forget` beside their official `claude-mem` integrations.
@@ -25,6 +25,8 @@ Typical project scopes:
 - ChatGPT Web: `chatgpt`, `chatgpt-web`
 
 Claude Code, Codex, and OpenClaw continue to use their official `claude-mem` integrations for recall/capture/search. This repository adds only a narrow optional deletion layer beside them; it does not patch or fork the official integrations.
+
+Pi mirrors the same lifecycle where Pi exposes an equivalent hook: session-start context is injected once, every substantive prompt initializes tracking, tool results are queued as observations, and `agent_settled` queues a summary. `CLAUDE_MEM_SEMANTIC_INJECT` defaults to `false` with `CLAUDE_MEM_SEMANTIC_INJECT_LIMIT=5`, matching upstream defaults. Pi has no equally non-invasive PreToolUse additional-context hook, so upstream file-context injection is intentionally not emulated.
 
 See [`docs/OMP_INTEGRATION.md`](docs/OMP_INTEGRATION.md) for OMP installation, lifecycle mapping, source identity, validation, and upgrade behavior.
 
