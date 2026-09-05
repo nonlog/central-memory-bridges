@@ -117,16 +117,7 @@ async function searchObservations(query, limit = 8) {
     const m = line.match(/^\|\s*#(\d+)\s*\|[^|]*\|[^|]*\|\s*([^|]+?)\s*\|/);
     if (m) ids.push({ id: Number(m[1]), title: m[2].trim() });
   }
-  const items = [];
-  for (const hit of ids.slice(0, limit)) {
-    try {
-      const obs = await worker(`/api/observation/${hit.id}`, {}, 8000);
-      items.push(obs);
-    } catch {
-      items.push({ id: hit.id, title: hit.title });
-    }
-  }
-  return { text, items };
+  return { text, items: ids.slice(0, limit) };
 }
 function observationText(obs) {
   const parts = [];
@@ -167,22 +158,23 @@ async function writeTurn({ userMessage, assistantMessage, project = DEFAULT_PROJ
   const assistant = redactSecrets(assistantMessage).slice(0, 24000);
   if (!user.trim() && !assistant.trim()) throw new Error('nothing to store');
   await worker('/api/sessions/init', {
-    method: 'POST', body: JSON.stringify({ contentSessionId: sid, project: p, prompt: user || '[memory capture]' }),
+    method: 'POST', body: JSON.stringify({ contentSessionId: sid, project: p, platformSource: 'chatgpt', prompt: user || '[memory capture]' }),
   }, 8000);
   if (assistant.trim()) {
     await worker('/api/sessions/observations', {
       method: 'POST',
       body: JSON.stringify({
         contentSessionId: sid,
+        platformSource: 'chatgpt',
         tool_name: 'assistant_message',
         tool_input: { source: 'chatgpt-web' },
-        tool_response: assistant.slice(0, 1000),
+        tool_response: assistant,
         cwd: 'chatgpt-web',
       }),
     }, 15000);
   }
   await worker('/api/sessions/summarize', {
-    method: 'POST', body: JSON.stringify({ contentSessionId: sid, last_assistant_message: assistant.slice(0, 4000) }),
+    method: 'POST', body: JSON.stringify({ contentSessionId: sid, platformSource: 'chatgpt', last_assistant_message: assistant.slice(0, 4000) }),
   }, 45000);
   const observationIds = assistant.trim() ? await waitForObservation(p, sid) : [];
   return {
