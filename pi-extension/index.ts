@@ -332,6 +332,7 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
 
     const sid = activeSessionId;
     const cwd = ctx.cwd || process.cwd();
+    const toolUseId = String((event as any).toolCallId || "").trim();
     const toolInput = sanitizeStructured((event as any).input);
     const toolResponse = serializeToolResponse(event);
 
@@ -344,6 +345,7 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
             contentSessionId: sid,
             platformSource: PLATFORM_SOURCE,
             tool_name: toolName,
+            ...(toolUseId ? { tool_use_id: toolUseId } : {}),
             tool_input: toolInput,
             tool_response: toolResponse,
             cwd,

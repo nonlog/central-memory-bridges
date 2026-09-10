@@ -26,7 +26,7 @@ Typical project scopes:
 
 Claude Code, Codex, and OpenClaw continue to use their official `claude-mem` integrations for recall/capture/search. This repository adds only a narrow optional deletion layer beside them; it does not patch or fork the official integrations.
 
-Pi mirrors the same lifecycle where Pi exposes an equivalent hook: session-start context is injected once, every substantive prompt initializes tracking, tool results are queued as observations, and `agent_settled` queues a summary. `CLAUDE_MEM_SEMANTIC_INJECT` defaults to `false` with `CLAUDE_MEM_SEMANTIC_INJECT_LIMIT=5`, matching upstream defaults. Pi has no equally non-invasive PreToolUse additional-context hook, so upstream file-context injection is intentionally not emulated.
+Pi mirrors the same lifecycle where Pi exposes an equivalent hook: session-start context is injected once, every substantive prompt initializes tracking, tool results are queued as observations with Pi's stable `toolCallId` forwarded as Worker `tool_use_id`, and `agent_settled` queues a summary. `CLAUDE_MEM_SEMANTIC_INJECT` defaults to `false` with `CLAUDE_MEM_SEMANTIC_INJECT_LIMIT=5`, matching upstream defaults. Pi has no equally non-invasive PreToolUse additional-context hook, so upstream file-context injection is intentionally not emulated.
 
 See [`docs/OMP_INTEGRATION.md`](docs/OMP_INTEGRATION.md) for OMP installation, lifecycle mapping, source identity, validation, and upgrade behavior.
 
