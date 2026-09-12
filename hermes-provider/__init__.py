@@ -271,6 +271,7 @@ class ClaudeMemMemoryProvider(MemoryProvider):
                 "/api/sessions/observations",
                 {
                     "contentSessionId": self._content_session_id,
+                    "platformSource": "hermes",
                     "tool_name": "assistant_message",
                     "tool_input": {"source": "hermes"},
                     "tool_response": assistant[:1000],
@@ -282,6 +283,7 @@ class ClaudeMemMemoryProvider(MemoryProvider):
             "/api/sessions/summarize",
             {
                 "contentSessionId": self._content_session_id,
+                "platformSource": "hermes",
                 "last_assistant_message": assistant[:4000],
             },
             timeout=_SUMMARY_TIMEOUT,
@@ -312,6 +314,7 @@ class ClaudeMemMemoryProvider(MemoryProvider):
             "/api/sessions/observations",
             {
                 "contentSessionId": self._content_session_id,
+                "platformSource": "hermes",
                 "tool_name": f"hermes_memory_{action}",
                 "tool_input": {
                     "target": target,
@@ -389,6 +392,7 @@ class ClaudeMemMemoryProvider(MemoryProvider):
             {
                 "contentSessionId": self._content_session_id,
                 "project": self._project,
+                "platformSource": "hermes",
                 "prompt": text[:8000],
             },
             timeout=_HTTP_TIMEOUT,
