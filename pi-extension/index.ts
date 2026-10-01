@@ -166,6 +166,7 @@ function contentSessionId(ctx: any, fallback: string): string {
 
 export default function centralClaudeMem(pi: ExtensionAPI) {
   let activeProject = projectForCwd();
+  let activeCwd = process.cwd();
   let activeSessionId = "pi-" + crypto.randomUUID();
   let startupContext = "";
   let startupContextDelivered = false;
@@ -178,6 +179,7 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
 
   const refreshSession = (ctx: any, cwd?: string) => {
     const resolvedCwd = cwd || ctx?.cwd || process.cwd();
+    activeCwd = resolvedCwd;
     activeProject = projectForCwd(resolvedCwd);
     activeSessionId = contentSessionId(ctx, "pi-" + crypto.randomUUID());
   };
@@ -237,6 +239,7 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
             last_assistant_message: safeAssistant,
             platformSource: PLATFORM_SOURCE,
             observedModel: model || undefined,
+            cwd: activeCwd,
           }),
         },
         HTTP_TIMEOUT_MS,
@@ -284,6 +287,7 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
             project: activeProject,
             prompt: safePrompt,
             platformSource: PLATFORM_SOURCE,
+            cwd: activeCwd,
           }),
         },
         HTTP_TIMEOUT_MS,
@@ -451,6 +455,7 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
               project,
               prompt: "Remember this durable information for future sessions.",
               platformSource: PLATFORM_SOURCE,
+              cwd: activeCwd,
             }),
           },
           HTTP_TIMEOUT_MS,
@@ -478,6 +483,7 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
               contentSessionId: sid,
               last_assistant_message: content.slice(0, MAX_ASSISTANT_CHARS),
               platformSource: PLATFORM_SOURCE,
+              cwd: activeCwd,
             }),
           },
           HTTP_TIMEOUT_MS,

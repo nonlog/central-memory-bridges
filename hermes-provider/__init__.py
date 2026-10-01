@@ -285,6 +285,7 @@ class ClaudeMemMemoryProvider(MemoryProvider):
                 "contentSessionId": self._content_session_id,
                 "platformSource": "hermes",
                 "last_assistant_message": assistant[:4000],
+                "cwd": os.getcwd(),
             },
             timeout=_SUMMARY_TIMEOUT,
         )
@@ -394,6 +395,7 @@ class ClaudeMemMemoryProvider(MemoryProvider):
                 "project": self._project,
                 "platformSource": "hermes",
                 "prompt": text[:8000],
+                "cwd": os.getcwd(),
             },
             timeout=_HTTP_TIMEOUT,
         )

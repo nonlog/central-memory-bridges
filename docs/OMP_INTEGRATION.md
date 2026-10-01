@@ -44,18 +44,34 @@ omp-extension/index.ts
 
 Restart OMP after installing/changing the extension. A newly opened process will also inherit updated user-level environment variables.
 
+
+## Upstream native OMP hook conflict
+
+Current upstream `claude-mem` can install its own user-global OMP hook at:
+
+```text
+~/.omp/agent/hooks/pre/claude-mem.ts
+```
+
+Do **not** enable that native hook at the same time as this central-memory extension. The native hook targets the local claude-mem Worker, while this extension owns the remote central Worker transport and also registers the central `claude_mem_*` tools. Running both would double-capture prompts/tool results/summaries and can split memory between local and central stores.
+
+When this extension detects the upstream hook file, automatic central recall/capture is disabled by default and only the explicit `claude_mem_*` tools remain registered. Remove the native hook (or uninstall the upstream OMP integration) to restore automatic central capture. `CLAUDE_MEM_CENTRAL_OMP_ALLOW_DUAL_CAPTURE=1` is an emergency override only and should not be used in normal deployments.
+
+Therefore, for the central-memory deployment, do not run `npx claude-mem install --ide omp` unless you are intentionally migrating away from this extension.
+
 ## Memory lifecycle
 
-The bridge deliberately captures only the durable conversational boundary, not every tool event:
+The bridge follows the same prompt/tool/summary ordering used by upstream OMP memory hooks while targeting the remote central Worker:
 
 - `session_start` — resolves the OMP session/project identity.
-- `before_agent_start` — initializes the central session, fetches project-scoped context, and injects it as a hidden OMP custom message.
-- `message_end` — records assistant text; when the assistant message has a terminal stop reason (`stop`, `end_turn`, or `length`), the bridge immediately writes the final assistant observation and queues central summarization on OMP's awaited event path.
+- `before_agent_start` — queues every user prompt through an ordered central session-init chain, then fetches project-scoped context.
+- `tool_result` — records tool observations only after the corresponding prompt init succeeds, including opaque `tool_use_id` when available.
+- `message_end` — records terminal assistant text for central summarization on OMP's awaited event path.
 - `turn_end` — fallback tracking for the latest assistant text.
 - `agent_end` — final fallback/flush when `willContinue` is false.
 - `session_shutdown` — final best-effort flush if a completed turn is still pending.
 
-Automatic capture excludes tool outputs. This keeps the central memory pool focused on user intent, final work results, decisions, and summaries while OMP retains its own local transcript/tool history.
+Automatic capture now follows upstream OMP ordering: prompts are initialized in order, tool results wait for the latest successful prompt init, and summaries wait for that same init chain. Automatic Worker requests use a 5-second timeout and a 3-failure/30-second circuit breaker so an unavailable central Worker does not stall OMP. Image/binary tool payloads are not forwarded as raw bytes.
 
 ## Source and project identity
 

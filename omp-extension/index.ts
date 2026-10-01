@@ -1,7 +1,7 @@
 // Central claude-mem integration for Oh My Pi (OMP).
 // Uses the existing central Worker only: no local/fallback Worker or database is started.
-// Automatic recall runs before substantive prompts; final user/assistant turns are captured
-// after the OMP agent loop settles. Tool outputs are intentionally not persisted here.
+// Automatic recall runs before substantive prompts; prompts, tool results, and summaries are
+// ordered like upstream OMP hooks while preserving the central HTTPS/token transport and tools.
 
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -24,7 +24,12 @@ function resolveWorkerUrl(): string {
 const BASE_PROJECT = "omp";
 const PLATFORM_SOURCE = "omp";
 const SEARCH_TIMEOUT_MS = 45_000;
-const HTTP_TIMEOUT_MS = 12_000;
+const HTTP_TIMEOUT_MS = 5_000;
+const SHUTDOWN_FLUSH_MS = 1_500;
+const AUTO_BREAKER_FAILURES = 3;
+const AUTO_BREAKER_OPEN_MS = 30_000;
+const MAX_TOOL_PAYLOAD_CHARS = 16_000;
+const MAX_TOOL_TEXT_CHARS = 12_000;
 const MAX_CONTEXT_CHARS = 8_000;
 
 const SECRET_PATTERNS: RegExp[] = [
@@ -41,6 +46,34 @@ function redactSecrets(value: unknown): string {
   let text = String(value ?? "");
   for (const pattern of SECRET_PATTERNS) text = text.replace(pattern, "[REDACTED_SECRET]");
   return text;
+}
+
+function parseBool(value: string | undefined, fallback: boolean): boolean {
+  if (value === undefined) return fallback;
+  return /^(1|true|yes|on)$/i.test(value.trim());
+}
+
+function sanitizeStructured(value: unknown, maxChars = MAX_TOOL_PAYLOAD_CHARS): unknown {
+  try {
+    const json = redactSecrets(JSON.stringify(value));
+    if (json.length <= maxChars) return JSON.parse(json);
+    return { truncated: true, preview: json.slice(0, maxChars) };
+  } catch {
+    return { text: redactSecrets(value).slice(0, maxChars) };
+  }
+}
+
+function upstreamNativeOmpHookPath(): string {
+  const agentDir = process.env.PI_CODING_AGENT_DIR || path.join(os.homedir(), ".omp", "agent");
+  return path.join(agentDir, "hooks", "pre", "claude-mem.ts");
+}
+
+function hasUpstreamNativeOmpHook(): boolean {
+  try {
+    return fs.existsSync(upstreamNativeOmpHookPath());
+  } catch {
+    return false;
+  }
 }
 
 function safeProject(value: string, fallback = BASE_PROJECT): string {
@@ -131,23 +164,135 @@ function contentSessionId(ctx: any, fallback: string): string {
 export default function centralClaudeMem(pi: ExtensionAPI) {
   const z = pi.zod;
   let activeProject = projectForCwd();
+  let activeCwd = process.cwd();
   let activeSessionId = `omp-${crypto.randomUUID()}`;
   let pendingPrompt = "";
   let pendingAssistant = "";
   let pendingCapture = false;
   let suppressCurrentCapture = false;
+  let initTail: Promise<boolean> = Promise.resolve(false);
+  let sessionAnchored = false;
+  let sessionExcluded = false;
+  let breakerFailures = 0;
+  let breakerOpenUntil = 0;
   let captureQueue: Promise<void> = Promise.resolve();
+  const inFlight = new Set<Promise<void>>();
 
-  const refreshSession = (ctx: any) => {
-    const cwd = ctx?.sessionManager?.getCwd?.() || process.cwd();
+  const nativeHookPresent = hasUpstreamNativeOmpHook();
+  const allowDualCapture = parseBool(process.env.CLAUDE_MEM_CENTRAL_OMP_ALLOW_DUAL_CAPTURE, false);
+  const automaticLifecycleEnabled = !nativeHookPresent || allowDualCapture;
+  if (nativeHookPresent && !allowDualCapture) {
+    console.warn(
+      `[central-claude-mem] Upstream OMP hook detected at ${upstreamNativeOmpHookPath()}; ` +
+      "automatic central capture/recall is disabled to prevent duplicate ingestion. " +
+      "Remove that hook when using this central extension. Manual claude_mem_* tools remain available.",
+    );
+  }
+
+  const resetAutomaticSession = () => {
+    pendingPrompt = "";
+    pendingAssistant = "";
+    pendingCapture = false;
+    initTail = Promise.resolve(false);
+    sessionAnchored = false;
+    sessionExcluded = false;
+  };
+
+  const refreshSession = (ctx: any, forceReset = false) => {
+    const cwd = ctx?.sessionManager?.getCwd?.() || ctx?.cwd || process.cwd();
+    const nextSessionId = contentSessionId(ctx, `omp-${crypto.randomUUID()}`);
+    if (forceReset || nextSessionId !== activeSessionId) resetAutomaticSession();
+    activeCwd = cwd;
     activeProject = projectForCwd(cwd);
-    activeSessionId = contentSessionId(ctx, `omp-${crypto.randomUUID()}`);
+    activeSessionId = nextSessionId;
+  };
+
+  const breakerOpen = () => Date.now() < breakerOpenUntil;
+  const onAutoSuccess = () => {
+    breakerFailures = 0;
+    breakerOpenUntil = 0;
+  };
+  const onAutoFailure = () => {
+    breakerFailures += 1;
+    if (breakerFailures >= AUTO_BREAKER_FAILURES) {
+      breakerFailures = 0;
+      breakerOpenUntil = Date.now() + AUTO_BREAKER_OPEN_MS;
+    }
+  };
+
+  const autoRequest = async (route: string, init: RequestInit = {}): Promise<any> => {
+    if (breakerOpen()) throw new Error("central claude-mem automatic capture circuit breaker is open");
+    try {
+      const result = await request(route, init, HTTP_TIMEOUT_MS);
+      onAutoSuccess();
+      return result;
+    } catch (error) {
+      onAutoFailure();
+      throw error;
+    }
+  };
+
+  const background = (task: () => Promise<unknown>): Promise<void> => {
+    const tracked = Promise.resolve()
+      .then(task)
+      .then(() => undefined)
+      .catch(error => {
+        pi.logger.debug("central claude-mem background capture failed", { error: String(error) });
+      });
+    inFlight.add(tracked);
+    void tracked.finally(() => inFlight.delete(tracked));
+    return tracked;
+  };
+
+  const flushBackground = async (timeoutMs = SHUTDOWN_FLUSH_MS) => {
+    const pending = Array.from(inFlight);
+    if (pending.length === 0) return;
+    await Promise.race([
+      Promise.allSettled(pending),
+      new Promise<void>(resolve => setTimeout(resolve, timeoutMs)),
+    ]);
+  };
+
+  const queuePromptInit = (safePrompt: string) => {
+    const sid = activeSessionId;
+    const project = activeProject;
+    const cwd = activeCwd;
+    initTail = initTail
+      .catch(() => false)
+      .then(async () => {
+        if (sessionExcluded || breakerOpen()) return false;
+        try {
+          const reply = await autoRequest(
+            "/api/sessions/init",
+            {
+              method: "POST",
+              body: JSON.stringify({
+                contentSessionId: sid,
+                project,
+                platformSource: PLATFORM_SOURCE,
+                prompt: safePrompt,
+                cwd,
+              }),
+            },
+          );
+          if (reply?.reason === "project_excluded") {
+            sessionExcluded = true;
+            return false;
+          }
+          sessionAnchored = true;
+          return true;
+        } catch {
+          return false;
+        }
+      });
   };
 
   const captureTurn = async () => {
     const prompt = pendingPrompt;
     const assistant = pendingAssistant;
     const sid = activeSessionId;
+    const cwd = activeCwd;
+    const initForSummary = initTail;
     pendingPrompt = "";
     pendingAssistant = "";
     pendingCapture = false;
@@ -157,23 +302,10 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
     }
     if (isTrivialPrompt(prompt) || !assistant.trim()) return;
 
+    const recorded = await initForSummary.catch(() => false);
+    if (!recorded || !sessionAnchored || sessionExcluded) return;
     const safeAssistant = redactSecrets(assistant).slice(0, 24_000);
-    await request(
-      "/api/sessions/observations",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          contentSessionId: sid,
-          platformSource: PLATFORM_SOURCE,
-          tool_name: "assistant_message",
-          tool_input: { source: PLATFORM_SOURCE },
-          tool_response: safeAssistant.slice(0, 1000),
-          cwd: process.cwd(),
-        }),
-      },
-      15_000,
-    );
-    await request(
+    await autoRequest(
       "/api/sessions/summarize",
       {
         method: "POST",
@@ -181,9 +313,9 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
           contentSessionId: sid,
           platformSource: PLATFORM_SOURCE,
           last_assistant_message: safeAssistant.slice(0, 4_000),
+          cwd,
         }),
       },
-      SEARCH_TIMEOUT_MS,
     );
   };
 
@@ -195,76 +327,105 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
     await captureQueue;
   };
 
-  pi.on("session_start", async (_event, ctx) => {
-    refreshSession(ctx);
-  });
+  if (automaticLifecycleEnabled) {
+    pi.on("session_start", async (_event, ctx) => {
+      refreshSession(ctx, true);
+    });
 
-  pi.on("before_agent_start", async (event, ctx) => {
-    await queueCapture();
-    refreshSession(ctx);
-    pendingPrompt = String(event.prompt || "");
-    pendingAssistant = "";
-    pendingCapture = !isTrivialPrompt(pendingPrompt);
-    if (!pendingCapture) return;
-
-    const safePrompt = redactSecrets(pendingPrompt).slice(0, 16_000);
-    try {
-      await request(
-        "/api/sessions/init",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            contentSessionId: activeSessionId,
-            project: activeProject,
-            platformSource: PLATFORM_SOURCE,
-            prompt: safePrompt,
-          }),
-        },
-        8_000,
-      );
-      const projects = `${BASE_PROJECT},${activeProject}`;
-      const context = await request(`/api/context/inject?${new URLSearchParams({ projects }).toString()}`, {}, 10_000);
-      const text = sanitizeInjectedContext(extractWorkerText(context)).slice(0, MAX_CONTEXT_CHARS);
-      if (!text) return;
-      return {
-        message: {
-          customType: "central-claude-mem-context",
-          content: `Central memory context for this OMP turn (past records; prefer newer verified facts when conflicts exist).\n\nOMP memory tool routing for this session is authoritative: use only claude_mem_search, claude_mem_recent, claude_mem_remember, and claude_mem_forget. Do not call legacy/raw mcp__claude_mem_* tools, get_observations, the mem-search skill, or a local claude-mem CLI unless those tools are explicitly mounted in this OMP session.\n\n${text}`,
-          display: false,
-        },
-      };
-    } catch (error) {
-      pi.logger.debug("central claude-mem recall failed", { error: String(error) });
-      return;
-    }
-  });
-
-  pi.on("message_end", async event => {
-    const message = (event as any).message;
-    const text = assistantMessageText(message);
-    if (!text) return;
-    pendingAssistant = text;
-    const stopReason = String(message?.stopReason || "");
-    if (stopReason === "stop" || stopReason === "end_turn" || stopReason === "length") {
+    pi.on("session_compact", async (_event, ctx) => {
       await queueCapture();
-    }
-  });
+      refreshSession(ctx, true);
+    });
 
-  pi.on("turn_end", async event => {
-    const text = assistantMessageText((event as any).message);
-    if (text) pendingAssistant = text;
-  });
+    pi.on("before_agent_start", async (event, ctx) => {
+      await queueCapture();
+      refreshSession(ctx);
+      pendingPrompt = String(event.prompt || "");
+      pendingAssistant = "";
+      pendingCapture = !isTrivialPrompt(pendingPrompt);
+      if (!pendingCapture) return;
 
-  pi.on("agent_end", async event => {
-    const text = lastAssistantText((event as any).messages || []);
-    if (text) pendingAssistant = text;
-    if ((event as any).willContinue) return;
-    await queueCapture();
-  });
+      const safePrompt = redactSecrets(pendingPrompt).slice(0, 16_000);
+      queuePromptInit(safePrompt);
 
-  pi.on("session_shutdown", async () => {
-    await queueCapture();
-  });
+      try {
+        if (breakerOpen()) return;
+        const projects = `${BASE_PROJECT},${activeProject}`;
+        const context = await autoRequest(`/api/context/inject?${new URLSearchParams({ projects }).toString()}`);
+        const text = sanitizeInjectedContext(extractWorkerText(context)).slice(0, MAX_CONTEXT_CHARS);
+        if (!text) return;
+        return {
+          message: {
+            customType: "central-claude-mem-context",
+            content: `Central memory context for this OMP turn (past records; prefer newer verified facts when conflicts exist).\n\nOMP memory tool routing for this session is authoritative: use only claude_mem_search, claude_mem_recent, claude_mem_remember, and claude_mem_forget. Do not call legacy/raw mcp__claude_mem_* tools, get_observations, the mem-search skill, or a local claude-mem CLI unless those tools are explicitly mounted in this OMP session.\n\n${text}`,
+            display: false,
+          },
+        };
+      } catch (error) {
+        pi.logger.debug("central claude-mem recall failed", { error: String(error) });
+        return;
+      }
+    });
+
+    pi.on("tool_result", async (event, ctx) => {
+      const toolName = String((event as any)?.toolName || "");
+      if (!toolName || toolName.startsWith("claude_mem_") || toolName.startsWith("memory_")) return;
+      if (sessionExcluded) return;
+
+      const sid = activeSessionId;
+      const cwd = ctx?.cwd || activeCwd || process.cwd();
+      const toolUseId = String((event as any)?.toolCallId || "").trim();
+      const initForObservation = initTail;
+      const responseText = redactSecrets(textFromContent((event as any)?.content)).slice(0, MAX_TOOL_TEXT_CHARS);
+      const body = {
+        contentSessionId: sid,
+        platformSource: PLATFORM_SOURCE,
+        tool_name: toolName,
+        ...(toolUseId ? { tool_use_id: toolUseId } : {}),
+        tool_input: sanitizeStructured((event as any)?.input),
+        tool_response: sanitizeStructured({
+          text: responseText,
+          isError: Boolean((event as any)?.isError),
+          details: (event as any)?.details,
+        }),
+        cwd,
+      };
+
+      background(async () => {
+        const recorded = await initForObservation.catch(() => false);
+        if (!recorded || sessionExcluded) return;
+        await autoRequest("/api/sessions/observations", { method: "POST", body: JSON.stringify(body) });
+      });
+    });
+
+    pi.on("message_end", async event => {
+      const message = (event as any).message;
+      const text = assistantMessageText(message);
+      if (!text) return;
+      pendingAssistant = text;
+      const stopReason = String(message?.stopReason || "");
+      if (stopReason === "stop" || stopReason === "end_turn" || stopReason === "length") {
+        await queueCapture();
+      }
+    });
+
+    pi.on("turn_end", async event => {
+      const text = assistantMessageText((event as any).message);
+      if (text) pendingAssistant = text;
+    });
+
+    pi.on("agent_end", async event => {
+      const text = lastAssistantText((event as any).messages || []);
+      if (text) pendingAssistant = text;
+      if ((event as any).willContinue) return;
+      await queueCapture();
+    });
+
+    pi.on("session_shutdown", async () => {
+      await queueCapture();
+      await flushBackground();
+    });
+  }
 
   pi.registerTool({
     name: "claude_mem_search",
@@ -330,6 +491,7 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
               project,
               platformSource: PLATFORM_SOURCE,
               prompt: "Remember this durable information for future sessions.",
+              cwd: activeCwd,
             }),
           },
           8_000,
@@ -344,7 +506,7 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
               tool_name: "omp_memory_remember",
               tool_input: { source: PLATFORM_SOURCE, kind: "explicit_remember" },
               tool_response: content.slice(0, 1000),
-              cwd: process.cwd(),
+              cwd: activeCwd,
             }),
           },
           15_000,
@@ -357,6 +519,7 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
               contentSessionId: sid,
               platformSource: PLATFORM_SOURCE,
               last_assistant_message: content.slice(0, 4_000),
+              cwd: activeCwd,
             }),
           },
           SEARCH_TIMEOUT_MS,
