@@ -44,13 +44,13 @@ omp-extension/index.ts
 
 Restart OMP after installing/changing the extension. A newly opened process will also inherit updated user-level environment variables.
 
-
 ## Upstream native OMP hook conflict
 
-Current upstream `claude-mem` can install its own user-global OMP hook at:
+Current upstream `claude-mem` can load OMP hooks from either the user-global or project-local path:
 
 ```text
 ~/.omp/agent/hooks/pre/claude-mem.ts
+<project>/.omp/hooks/pre/claude-mem.ts
 ```
 
 Do **not** enable that native hook at the same time as this central-memory extension. The native hook targets the local claude-mem Worker, while this extension owns the remote central Worker transport and also registers the central `claude_mem_*` tools. Running both would double-capture prompts/tool results/summaries and can split memory between local and central stores.

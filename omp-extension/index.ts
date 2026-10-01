@@ -63,16 +63,19 @@ function sanitizeStructured(value: unknown, maxChars = MAX_TOOL_PAYLOAD_CHARS): 
   }
 }
 
-function upstreamNativeOmpHookPath(): string {
+function upstreamNativeOmpHookPaths(): string[] {
   const agentDir = process.env.PI_CODING_AGENT_DIR || path.join(os.homedir(), ".omp", "agent");
-  return path.join(agentDir, "hooks", "pre", "claude-mem.ts");
+  return [
+    path.join(agentDir, "hooks", "pre", "claude-mem.ts"),
+    path.join(process.cwd(), ".omp", "hooks", "pre", "claude-mem.ts"),
+  ];
 }
 
-function hasUpstreamNativeOmpHook(): boolean {
+function findUpstreamNativeOmpHook(): string | undefined {
   try {
-    return fs.existsSync(upstreamNativeOmpHookPath());
+    return upstreamNativeOmpHookPaths().find(candidate => fs.existsSync(candidate));
   } catch {
-    return false;
+    return undefined;
   }
 }
 
@@ -178,12 +181,12 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
   let captureQueue: Promise<void> = Promise.resolve();
   const inFlight = new Set<Promise<void>>();
 
-  const nativeHookPresent = hasUpstreamNativeOmpHook();
+  const nativeHookPath = findUpstreamNativeOmpHook();
   const allowDualCapture = parseBool(process.env.CLAUDE_MEM_CENTRAL_OMP_ALLOW_DUAL_CAPTURE, false);
-  const automaticLifecycleEnabled = !nativeHookPresent || allowDualCapture;
-  if (nativeHookPresent && !allowDualCapture) {
+  const automaticLifecycleEnabled = !nativeHookPath || allowDualCapture;
+  if (nativeHookPath && !allowDualCapture) {
     console.warn(
-      `[central-claude-mem] Upstream OMP hook detected at ${upstreamNativeOmpHookPath()}; ` +
+      `[central-claude-mem] Upstream OMP hook detected at ${nativeHookPath}; ` +
       "automatic central capture/recall is disabled to prevent duplicate ingestion. " +
       "Remove that hook when using this central extension. Manual claude_mem_* tools remain available.",
     );
@@ -334,7 +337,11 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
 
     pi.on("session_compact", async (_event, ctx) => {
       await queueCapture();
-      refreshSession(ctx, true);
+      const cwd = ctx?.sessionManager?.getCwd?.() || ctx?.cwd || process.cwd();
+      resetAutomaticSession();
+      activeCwd = cwd;
+      activeProject = projectForCwd(cwd);
+      activeSessionId = `omp-${crypto.randomUUID()}`;
     });
 
     pi.on("before_agent_start", async (event, ctx) => {
