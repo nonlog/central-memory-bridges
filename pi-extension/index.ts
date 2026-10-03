@@ -458,7 +458,7 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
   pi.registerTool({
     name: "work_state_write",
     label: "Work State Write",
-    description: "Append one update to this checkout's canonical cross-session to-do list or working state.",
+    description: "Append one update to this checkout's canonical cross-session to-do list or working state. Use when Work State context is present (Worker 13.29+).",
     promptSnippet: "Update canonical cross-session work state",
     parameters: Type.Object({
       list: Type.String({ minLength: 1, maxLength: 200 }),
@@ -491,7 +491,7 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
   pi.registerTool({
     name: "work_state_read",
     label: "Work State Read",
-    description: "Read this checkout's canonical cross-session to-do lists and working state.",
+    description: "Read this checkout's canonical cross-session to-do lists and working state. Use when Work State context is present (Worker 13.29+).",
     promptSnippet: "Read canonical cross-session work state",
     parameters: Type.Object({
       list: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),

@@ -67,7 +67,8 @@ WORK_STATE_WRITE_SCHEMA = {
     "name": "work_state_write",
     "description": (
         "Append one update to this checkout's canonical cross-session to-do list or working state. "
-        "Use fields.task plus status todo/doing/done/dropped for tasks; other fields track list state."
+        "Use when Work State context is present (Worker 13.29+). Use fields.task plus status "
+        "todo/doing/done/dropped for tasks; other fields track list state."
     ),
     "parameters": {
         "type": "object",
@@ -86,7 +87,7 @@ WORK_STATE_WRITE_SCHEMA = {
 
 WORK_STATE_READ_SCHEMA = {
     "name": "work_state_read",
-    "description": "Read this checkout's canonical cross-session to-do lists and working state.",
+    "description": "Read this checkout's canonical cross-session to-do lists and working state when Work State context is present (Worker 13.29+).",
     "parameters": {
         "type": "object",
         "properties": {

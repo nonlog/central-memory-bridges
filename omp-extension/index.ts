@@ -385,10 +385,13 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
         if (memoryText) blocks.push(memoryText);
         const text = blocks.join("\n\n").slice(0, MAX_CONTEXT_CHARS);
         if (!text) return;
+        const allowedTools = stripped.hadWorkState
+          ? "claude_mem_search, claude_mem_recent, claude_mem_remember, claude_mem_forget, work_state_write, and work_state_read"
+          : "claude_mem_search, claude_mem_recent, claude_mem_remember, and claude_mem_forget";
         return {
           message: {
             customType: "central-claude-mem-context",
-            content: `Central memory context for this OMP turn (past records; prefer newer verified facts when conflicts exist).\n\nOMP memory tool routing for this session is authoritative: use only claude_mem_search, claude_mem_recent, claude_mem_remember, claude_mem_forget, work_state_write, and work_state_read. Do not call legacy/raw mcp__claude_mem_* tools, get_observations, the mem-search skill, or a local claude-mem CLI unless those tools are explicitly mounted in this OMP session.\n\n${text}`,
+            content: `Central memory context for this OMP turn (past records; prefer newer verified facts when conflicts exist).\n\nOMP memory tool routing for this session is authoritative: use only ${allowedTools}. Do not call legacy/raw mcp__claude_mem_* tools, get_observations, the mem-search skill, or a local claude-mem CLI unless those tools are explicitly mounted in this OMP session.\n\n${text}`,
             display: false,
           },
         };
@@ -501,7 +504,7 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
   pi.registerTool({
     name: "work_state_write",
     label: "Work State Write",
-    description: "Append one update to this checkout's canonical cross-session to-do list or working state.",
+    description: "Append one update to this checkout's canonical cross-session to-do list or working state. Use when the Worker injects Work State context (13.29+).",
     approval: "write",
     parameters: z.object({
       list: z.string().min(1).max(200),
@@ -530,7 +533,7 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
   pi.registerTool({
     name: "work_state_read",
     label: "Work State Read",
-    description: "Read this checkout's canonical cross-session to-do lists and working state.",
+    description: "Read this checkout's canonical cross-session to-do lists and working state. Use when the Worker injects Work State context (13.29+).",
     approval: "read",
     parameters: z.object({
       list: z.string().min(1).max(200).optional(),
