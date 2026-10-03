@@ -17,6 +17,8 @@ const DEFAULT_SCOPES = ['memory:read', 'memory:write', 'offline_access'];
 const ALLOWED_SCOPES = new Set(DEFAULT_SCOPES);
 const DEFAULT_PROJECT = 'chatgpt-web';
 const DEFAULT_CONTEXT_PROJECTS = ['chatgpt', DEFAULT_PROJECT];
+const WORK_STATE_CONTEXT_HEADER = '# Work state: your to-do lists and working state';
+const WORK_STATE_RULE_END = '- Read every list, closed items included: work_state_read with includeClosed=true';
 
 if (OAUTH_SECRET.length < 32) {
   throw new Error('OAUTH_SECRET must be at least 32 characters');
@@ -96,6 +98,17 @@ function extractWorkerText(raw) {
   if (typeof raw === 'string') return raw;
   if (Array.isArray(raw?.content)) return raw.content.filter((x) => x?.type === 'text').map((x) => x.text || '').join('\n');
   return JSON.stringify(raw);
+}
+
+function stripUnsupportedWorkStateContext(value) {
+  const original = String(value || '');
+  const text = original.replace(/\r\n/g, '\n').trimStart();
+  if (!text.startsWith(WORK_STATE_CONTEXT_HEADER)) return original;
+  const ruleEnd = text.indexOf(WORK_STATE_RULE_END);
+  const tail = ruleEnd >= 0 ? text.slice(ruleEnd + WORK_STATE_RULE_END.length) : text.slice(WORK_STATE_CONTEXT_HEADER.length);
+  const nextSection = tail.search(/\n\n(?=# (?:\[|claude-mem status))/);
+  if (nextSection < 0) return '';
+  return tail.slice(nextSection + 2).trimStart();
 }
 async function worker(path, options = {}, timeoutMs = 45000) {
   const response = await fetch(`${WORKER}${path}`, {
@@ -275,7 +288,7 @@ function makeServer(scopes = []) {
     const selected = (projects?.length ? projects : DEFAULT_CONTEXT_PROJECTS).map((p) => safeProject(p));
     const q = new URLSearchParams({ projects: selected.join(',') });
     const raw = await worker(`/api/context/inject?${q.toString()}`, {}, 10000);
-    return { content: [{ type: 'text', text: extractWorkerText(raw).slice(0, 16000) }] };
+    return { content: [{ type: 'text', text: stripUnsupportedWorkStateContext(extractWorkerText(raw)).slice(0, 16000) }] };
   });
 
   server.registerTool('memory_capture', {

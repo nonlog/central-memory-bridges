@@ -22,6 +22,9 @@ const MAX_TOOL_PAYLOAD_CHARS = 16_000;
 const MAX_TOOL_TEXT_CHARS = 12_000;
 const SEMANTIC_INJECT = parseBool(process.env.CLAUDE_MEM_SEMANTIC_INJECT, false);
 const SEMANTIC_INJECT_LIMIT = clampInt(process.env.CLAUDE_MEM_SEMANTIC_INJECT_LIMIT, 5, 1, 20);
+const WORK_STATE_CONTEXT_HEADER = "# Work state: your to-do lists and working state";
+const WORK_STATE_RULE_END = "- Read every list, closed items included: work_state_read with includeClosed=true";
+const WORK_STATE_GUIDANCE = `${WORK_STATE_CONTEXT_HEADER}\nUse work_state_write as the canonical cross-session to-do/state tool for this checkout; use work_state_read to inspect it, including closed items when needed.`;
 const DEFAULT_SKIP_TOOLS = [
   "ListMcpResourcesTool",
   "SlashCommand",
@@ -104,6 +107,16 @@ function extractWorkerText(raw: any): string {
       .join("\n");
   }
   return JSON.stringify(raw);
+}
+
+function stripWorkStateContext(text: string): { hadWorkState: boolean; text: string } {
+  const normalized = String(text || "").replace(/\r\n/g, "\n").trimStart();
+  if (!normalized.startsWith(WORK_STATE_CONTEXT_HEADER)) return { hadWorkState: false, text: String(text || "") };
+  const ruleEnd = normalized.indexOf(WORK_STATE_RULE_END);
+  const tail = ruleEnd >= 0 ? normalized.slice(ruleEnd + WORK_STATE_RULE_END.length) : normalized.slice(WORK_STATE_CONTEXT_HEADER.length);
+  const match = tail.match(/\n\n(?=# (?:\[|claude-mem status))/);
+  if (!match || match.index === undefined) return { hadWorkState: true, text: "" };
+  return { hadWorkState: true, text: tail.slice(match.index + match[0].length).trimStart() };
 }
 
 function sanitizeStructured(value: unknown, maxChars = MAX_TOOL_PAYLOAD_CHARS): unknown {
@@ -211,7 +224,18 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
       const projects = BASE_PROJECT + "," + activeProject;
       const query = new URLSearchParams({ projects });
       const raw = await request("/api/context/inject?" + query.toString(), {}, SESSION_CONTEXT_TIMEOUT_MS);
-      startupContext = extractWorkerText(raw).trim().slice(0, MAX_CONTEXT_CHARS);
+      const stripped = stripWorkStateContext(extractWorkerText(raw));
+      const blocks: string[] = [];
+      if (stripped.hadWorkState) {
+        try {
+          const q = new URLSearchParams({ cwd: activeCwd });
+          const state = await request("/api/work-state?" + q.toString(), {}, HTTP_TIMEOUT_MS);
+          const stateText = extractWorkerText(state).trim();
+          if (stateText) blocks.push(WORK_STATE_GUIDANCE + "\n" + stateText);
+        } catch {}
+      }
+      if (stripped.text.trim()) blocks.push(stripped.text.trim());
+      startupContext = blocks.join("\n\n").slice(0, MAX_CONTEXT_CHARS);
     } catch {
       startupContext = "";
     }
@@ -332,7 +356,7 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
 
   pi.on("tool_result", async (event, ctx) => {
     const toolName = String((event as any).toolName || "");
-    if (!toolName || toolName.startsWith("claude_mem_") || SKIP_TOOLS.has(toolName.toLowerCase())) return;
+    if (!toolName || toolName.startsWith("claude_mem_") || toolName.startsWith("work_state_") || SKIP_TOOLS.has(toolName.toLowerCase())) return;
 
     const sid = activeSessionId;
     const cwd = ctx.cwd || process.cwd();
@@ -427,6 +451,62 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
         return { content: [{ type: "text", text: extractWorkerText(raw) }], details: { source: "central-claude-mem" } };
       } catch (error: any) {
         return { content: [{ type: "text", text: "Central recent memory failed: " + error.message }], details: { error: true } };
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "work_state_write",
+    label: "Work State Write",
+    description: "Append one update to this checkout's canonical cross-session to-do list or working state.",
+    promptSnippet: "Update canonical cross-session work state",
+    parameters: Type.Object({
+      list: Type.String({ minLength: 1, maxLength: 200 }),
+      fields: Type.Record(
+        Type.String({ minLength: 1 }),
+        Type.Union([Type.String(), Type.Number(), Type.Boolean(), Type.Null()]),
+        { minProperties: 1 },
+      ),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const cwd = ctx?.cwd || activeCwd || process.cwd();
+      if (!params.fields || Object.keys(params.fields).length === 0) {
+        return { content: [{ type: "text", text: "fields must be a non-empty object" }], details: { error: true } };
+      }
+      if (JSON.stringify(params.fields).length > 2_000) {
+        return { content: [{ type: "text", text: "fields must be at most 2000 characters as JSON" }], details: { error: true } };
+      }
+      try {
+        const raw = await request("/api/work-state/entries", {
+          method: "POST",
+          body: JSON.stringify({ cwd, list: String(params.list), fields: params.fields }),
+        }, HTTP_TIMEOUT_MS);
+        return { content: [{ type: "text", text: extractWorkerText(raw) }], details: { source: "central-claude-mem" } };
+      } catch (error: any) {
+        return { content: [{ type: "text", text: "Work state write unavailable: " + error.message }], details: { error: true } };
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "work_state_read",
+    label: "Work State Read",
+    description: "Read this checkout's canonical cross-session to-do lists and working state.",
+    promptSnippet: "Read canonical cross-session work state",
+    parameters: Type.Object({
+      list: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+      includeClosed: Type.Optional(Type.Boolean()),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const cwd = ctx?.cwd || activeCwd || process.cwd();
+      const q = new URLSearchParams({ cwd });
+      if (params.list) q.set("list", String(params.list));
+      if (params.includeClosed) q.set("includeClosed", "true");
+      try {
+        const raw = await request("/api/work-state?" + q.toString(), {}, HTTP_TIMEOUT_MS);
+        return { content: [{ type: "text", text: extractWorkerText(raw) }], details: { source: "central-claude-mem" } };
+      } catch (error: any) {
+        return { content: [{ type: "text", text: "Work state read unavailable: " + error.message }], details: { error: true } };
       }
     },
   });

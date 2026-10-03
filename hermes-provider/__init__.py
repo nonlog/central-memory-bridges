@@ -63,6 +63,48 @@ SEARCH_SCHEMA = {
     },
 }
 
+WORK_STATE_WRITE_SCHEMA = {
+    "name": "work_state_write",
+    "description": (
+        "Append one update to this checkout's canonical cross-session to-do list or working state. "
+        "Use fields.task plus status todo/doing/done/dropped for tasks; other fields track list state."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "list": {"type": "string", "description": "To-do list or tracked thing, max 200 characters."},
+            "fields": {
+                "type": "object",
+                "description": "Non-empty state update; values must be string, number, boolean, or null.",
+                "additionalProperties": True,
+            },
+        },
+        "required": ["list", "fields"],
+        "additionalProperties": False,
+    },
+}
+
+WORK_STATE_READ_SCHEMA = {
+    "name": "work_state_read",
+    "description": "Read this checkout's canonical cross-session to-do lists and working state.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "list": {"type": "string", "description": "Optional list name."},
+            "includeClosed": {"type": "boolean", "description": "Include done/dropped items and closed lists."},
+        },
+        "additionalProperties": False,
+    },
+}
+
+WORK_STATE_CONTEXT_HEADER = "# Work state: your to-do lists and working state"
+WORK_STATE_RULE_END = "- Read every list, closed items included: work_state_read with includeClosed=true"
+WORK_STATE_GUIDANCE = (
+    "# Work state: your to-do lists and working state\n"
+    "Use work_state_write as the canonical cross-session to-do/state tool for this checkout; "
+    "use work_state_read to inspect it, including closed items when needed."
+)
+
 
 def _as_bool(value: Any, default: bool) -> bool:
     if isinstance(value, bool):
@@ -121,6 +163,23 @@ def _extract_mcp_text(raw: str) -> str:
         if parts:
             return "\n".join(parts).strip()
     return raw.strip()
+
+
+def _strip_work_state_context(value: str) -> tuple[bool, str]:
+    original = str(value or "")
+    text = original.replace("\r\n", "\n").lstrip()
+    if not text.startswith(WORK_STATE_CONTEXT_HEADER):
+        return False, original
+    rule_end = text.find(WORK_STATE_RULE_END)
+    tail = (
+        text[rule_end + len(WORK_STATE_RULE_END):]
+        if rule_end >= 0
+        else text[len(WORK_STATE_CONTEXT_HEADER):]
+    )
+    match = re.search(r"\n\n(?=# (?:\[|claude-mem status))", tail)
+    if not match:
+        return True, ""
+    return True, tail[match.end():].lstrip()
 
 
 class ClaudeMemMemoryProvider(MemoryProvider):
@@ -239,10 +298,19 @@ class ClaudeMemMemoryProvider(MemoryProvider):
         text = self._get_text(path, timeout=_HTTP_TIMEOUT)
         if not text:
             return ""
-        lowered = text.lower()
-        if "has no memory yet" in lowered or "this project has no memory yet" in lowered:
+        had_work_state, memory_text = _strip_work_state_context(text)
+        blocks: List[str] = []
+        if had_work_state:
+            state_path = "/api/work-state?" + urllib.parse.urlencode({"cwd": os.getcwd()})
+            state = self._get_text(state_path, timeout=_HTTP_TIMEOUT)
+            if state:
+                blocks.append(WORK_STATE_GUIDANCE + "\n" + state.strip())
+        lowered = memory_text.lower()
+        if memory_text.strip() and "has no memory yet" not in lowered and "this project has no memory yet" not in lowered:
+            blocks.append(memory_text.strip())
+        if not blocks:
             return ""
-        text = text.strip()
+        text = "\n\n".join(blocks)
         if len(text) > self._max_context_chars:
             text = text[: self._max_context_chars].rstrip() + "\n[central memory context truncated]"
         return "## Claude-Mem Central Context\n" + text
@@ -328,7 +396,7 @@ class ClaudeMemMemoryProvider(MemoryProvider):
         )
 
     def get_tool_schemas(self) -> List[Dict[str, Any]]:
-        return [SEARCH_SCHEMA, RECENT_SCHEMA]
+        return [SEARCH_SCHEMA, RECENT_SCHEMA, WORK_STATE_WRITE_SCHEMA, WORK_STATE_READ_SCHEMA]
 
     def handle_tool_call(self, tool_name: str, args: Dict[str, Any], **kwargs) -> str:
         if tool_name == "claude_mem_search":
@@ -361,6 +429,37 @@ class ClaudeMemMemoryProvider(MemoryProvider):
                 {"ok": True, "project": project, "result": _extract_mcp_text(raw)},
                 ensure_ascii=False,
             )
+        if tool_name == "work_state_write":
+            list_name = str(args.get("list") or "").strip()
+            fields = args.get("fields")
+            if not list_name or len(list_name) > 200:
+                return json.dumps({"ok": False, "error": "list is required and must be at most 200 characters"})
+            if not isinstance(fields, dict) or not fields:
+                return json.dumps({"ok": False, "error": "fields must be a non-empty object"})
+            if any(not isinstance(k, str) or not k for k in fields):
+                return json.dumps({"ok": False, "error": "field names must be non-empty strings"})
+            if any(v is not None and not isinstance(v, (str, int, float, bool)) for v in fields.values()):
+                return json.dumps({"ok": False, "error": "field values must be string, number, boolean, or null"})
+            if len(json.dumps(fields, ensure_ascii=False)) > 2000:
+                return json.dumps({"ok": False, "error": "fields must be at most 2000 characters as JSON"})
+            raw = self._post_json(
+                "/api/work-state/entries",
+                {"cwd": os.getcwd(), "list": list_name, "fields": fields},
+                timeout=_HTTP_TIMEOUT,
+            )
+            return raw or json.dumps({"ok": False, "error": "work state is unavailable on this Worker"})
+        if tool_name == "work_state_read":
+            query: Dict[str, Any] = {"cwd": os.getcwd()}
+            list_name = str(args.get("list") or "").strip()
+            if list_name:
+                query["list"] = list_name
+            if _as_bool(args.get("includeClosed"), False):
+                query["includeClosed"] = "true"
+            raw = self._get_text(
+                "/api/work-state?" + urllib.parse.urlencode(query),
+                timeout=_HTTP_TIMEOUT,
+            )
+            return raw or json.dumps({"ok": False, "error": "work state is unavailable on this Worker"})
         return json.dumps({"ok": False, "error": f"unknown tool: {tool_name}"})
 
     def shutdown(self) -> None:

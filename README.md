@@ -4,10 +4,10 @@ Integration source for connecting multiple AI clients to one central `claude-mem
 
 ## Components
 
-- `hermes-provider/` — Hermes native `MemoryProvider` adapter. Automatic project-scoped recall and automatic turn capture; explicit cross-project search/recent tools.
-- `pi-extension/` — Pi Coding Agent extension aligned to the upstream `claude-mem` lifecycle: one-shot session-start context, per-prompt session init with optional semantic injection, asynchronous tool-result observation capture and settled-run summaries, plus explicit search/recent/remember tools.
-- `omp-extension/` — Oh My Pi (OMP) extension. Uses OMP's native extension lifecycle for automatic recall/final-turn capture plus explicit search/recent/remember/forget tools, with `platform_source=omp` kept distinct from Pi.
-- `chatgpt-mcp/` — least-privilege remote MCP/OAuth bridge for ChatGPT Business. Exposes only central-memory operations, not host administration.
+- `hermes-provider/` — Hermes native `MemoryProvider` adapter. Automatic project-scoped recall and automatic turn capture; explicit cross-project search/recent plus cwd-scoped Work State tools (Worker 13.29+).
+- `pi-extension/` — Pi Coding Agent extension aligned to the upstream `claude-mem` lifecycle: one-shot session-start context, per-prompt session init with optional semantic injection, asynchronous tool-result observation capture and settled-run summaries, plus explicit search/recent/remember and cwd-scoped Work State tools (Worker 13.29+).
+- `omp-extension/` — Oh My Pi (OMP) extension. Uses OMP's native extension lifecycle for automatic recall/final-turn capture plus explicit search/recent/remember/forget and cwd-scoped Work State tools (Worker 13.29+), with `platform_source=omp` kept distinct from Pi.
+- `chatgpt-mcp/` — least-privilege remote MCP/OAuth bridge for ChatGPT Business. Exposes only central-memory operations, not host administration; because ChatGPT has no real checkout cwd, it filters upstream cwd-bound Work State instructions instead of misrouting them to the bridge host.
 - `memory-admin-mcp/` — standalone stdio MCP for Claude Code and Codex that adds only exact-ID `claude_mem_forget` beside their official `claude-mem` integrations.
 - `openclaw-memory-admin/` — optional OpenClaw tool-only plugin exposing the same exact-ID `claude_mem_forget` contract without modifying the official OpenClaw `claude-mem` plugin.
 - `deploy/` — sanitized deployment examples plus repeatable local deployment helpers. Real credentials and runtime token state are intentionally excluded.

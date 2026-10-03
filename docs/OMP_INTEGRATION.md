@@ -89,14 +89,16 @@ The bridge always sends explicit `platformSource: "omp"`. The central deployment
 
 ## Tools
 
-The extension registers four OMP tools:
+The extension registers six OMP tools:
 
 - `claude_mem_search` — cross-project central-memory search (`read`).
 - `claude_mem_recent` — recent memory for one known project (`read`).
 - `claude_mem_remember` — explicit durable-memory write (`write`).
 - `claude_mem_forget` — exact-ID deletion for `observation`, `summary`, or `prompt` records (`write`). The agent must identify exact records first and must never guess IDs.
+- `work_state_write` — append a task/state update to claude-mem's canonical Work State for the actual OMP checkout (`write`; Worker 13.29+).
+- `work_state_read` — read that checkout's open/closed Work State (`read`; Worker 13.29+).
 
-The hidden recall message declares these OMP-native tool names as authoritative and removes stale `get_observations` / `mem-search` routing hints emitted by generic claude-mem context. This prevents OMP from trying Claude-side raw MCP names such as `mcp__claude_mem_*` when those tools are not mounted.
+The hidden recall message declares these OMP-native tool names as authoritative and removes stale `get_observations` / `mem-search` routing hints emitted by generic claude-mem context. This prevents OMP from trying Claude-side raw MCP names such as `mcp__claude_mem_*` when those tools are not mounted. From Worker 13.29 onward, the bridge also replaces the generic project-scoped Work State prefix with Work State read through OMP's real `cwd`, so the state follows the actual checkout instead of the compatibility project alias `omp-<cwd basename>`. On older Workers the Work State path is never probed unless the agent explicitly calls one of the new tools.
 
 When `claude_mem_forget` runs, automatic capture of that cleanup turn is suppressed once so deleting a test or unwanted memory does not immediately create a replacement meta-memory describing the deletion operation itself.
 
