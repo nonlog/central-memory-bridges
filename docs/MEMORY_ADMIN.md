@@ -111,12 +111,6 @@ Worker URL resolution order:
 
 The loopback default is appropriate when OpenClaw and the central Worker run on the same host and avoids routing a destructive request through the public endpoint. OpenClaw's official tool-plugin SDK supports independently registered agent tools without modifying another plugin: <https://github.com/openclaw/openclaw/blob/main/docs/plugins/tool-plugins.md>.
 
-## OMP
-
-OMP is maintained by this repository rather than by upstream `claude-mem`, so its native bridge exposes the same `claude_mem_forget` contract directly in `omp-extension/index.ts`.
-
-OMP additionally suppresses automatic capture of the cleanup turn once after `claude_mem_forget`, preventing a deletion request from immediately generating a replacement meta-memory such as “deleted test memory #123”.
-
 ## Capture limitation for official integrations
 
 The standalone admin MCP and OpenClaw admin plugin deliberately do not intercept the lifecycle of the official Claude Code/Codex/OpenClaw `claude-mem` integrations. Therefore a successful deletion can still be followed by normal upstream capture of the conversational statement describing that deletion.

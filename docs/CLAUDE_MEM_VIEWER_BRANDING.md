@@ -10,7 +10,7 @@ This repository carries a repeatable Viewer overlay for the central `claude-mem`
 | Codex | `codex`, `codex-cli`, `Codex` | Reviewed local copy of the official Codex app asset, `codex-app-ga-logo.png`; Blossom fallback |
 | Claude | `claude`, `claude-code`, `Claude` | Reviewed local copy of the official `claude.ai/favicon.ico`, served as `claude-favicon.ico`; remote official favicon fallback |
 | Pi | `pi`, `Pi` | `https://pi.dev/logo-auto.svg` |
-| OMP / Oh My Pi | `omp`, `oh-my-pi`, `OMP` | Current official `https://omp.sh/favicon.svg`, copied locally as `omp-favicon.svg`; official URL fallback |
+| Legacy OMP / Oh My Pi | `omp`, `oh-my-pi`, `OMP` | Current official `https://omp.sh/favicon.svg`, copied locally as `omp-favicon.svg`; official URL fallback |
 | Hermes | `hermes`, `hermes-agent`, `Hermes` | Official NousResearch Hermes Agent 32×32 favicon, copied locally as `hermes-favicon-32.png` |
 | OpenClaw | `openclaw`, `OpenClaw` | Current official OpenClaw Control UI favicon, copied locally as `openclaw-favicon.svg` |
 
@@ -70,16 +70,16 @@ An official `claude-mem` upgrade may replace both Viewer files and the bundled W
 2. reviewed local icon assets for marketplace and active cache Viewer copies;
 3. this Viewer branding patch.
 
-The OMP Worker compatibility fallback infers `platform_source=omp` from `omp`, `oh-my-pi`, or `omp-*` project/content-session identifiers when an older caller omits an explicit source. The current OMP extension sends `platformSource: "omp"` explicitly, so the fallback is defensive compatibility rather than the primary path.
+The OMP bridge was retired on 2026-10-06. The registry, icon, and compatibility fallback remain only so historical OMP records and older captured identifiers continue to render consistently; no active OMP bridge is shipped by this repository.
 
 Branding/reapply failures are intentionally non-blocking relative to the official updater: an upstream layout change should be logged for repair rather than prevent the official `claude-mem` update or rollback.
 
 ## Verification checklist
 
 1. Run the patcher with `--check` against marketplace and active cache roots.
-2. Confirm the live Viewer HTML contains the branding marker and `omp-favicon.svg`.
+2. Confirm the live Viewer HTML contains the branding marker.
 3. Confirm local icon endpoints return HTTP 200 and match their reviewed persistent copies.
-4. Confirm `/api/projects` exposes each expected `platform_source`, including `omp` when OMP has written memory.
+4. Confirm historical `platform_source=omp` records, when present, still render with the legacy OMP badge.
 5. Open the Viewer, hard-refresh it, and verify Prompt/Summary/Observation badges in light and dark themes.
 
 ## Production validation
@@ -95,7 +95,7 @@ OMP validation confirmed:
 - `/api/projects` reported `omp-AgentDock` under `projectsBySource.omp` after OMP memory traffic;
 - the central Worker remained healthy on `claude-mem` 13.15.0 with MCP ready after the controlled restart.
 
-See [`OMP_INTEGRATION.md`](OMP_INTEGRATION.md) for the OMP bridge lifecycle and end-to-end memory validation.
+The historical OMP validation record is retained here only to document icon/source compatibility after the bridge itself was retired.
 
 ## Rollback
 
