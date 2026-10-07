@@ -18,7 +18,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Verify lifecycle contract
+      - name: Verify source contract
         run: node pi-extension/contract.test.mjs
-      - name: Verify TypeScript syntax and imports
-        run: npx --yes esbuild@0.25.10 pi-extension/index.ts --bundle --platform=node --packages=external --outfile=/tmp/pi-extension.js
+      - name: Install CI-only runtime dependencies
+        run: npm install --no-save --ignore-scripts typebox esbuild@0.25.10
+      - name: Bundle extension for runtime tests
+        run: |
+          mkdir -p pi-extension/.ci
+          npx esbuild pi-extension/index.ts --bundle --platform=node --format=esm --outfile=pi-extension/.ci/index.mjs
+      - name: Verify native Pi lifecycle behavior
+        run: node pi-extension/runtime.test.mjs
