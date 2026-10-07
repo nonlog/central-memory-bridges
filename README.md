@@ -28,6 +28,26 @@ The custom OMP bridge was retired on 2026-10-06 and is no longer shipped or supp
 
 Pi follows the upstream 13.34+ native-capture lifecycle instead of deriving turn identity from prompt text. `before_agent_start` only resets turn state; the awaited `context_with_system` phase validates the active persisted user entry from `sessionManager.getBranch()`, probes `/api/sessions/native-prompt-capability`, and sends that entry's real ID as `nativePromptId`. Context, tool observations and summaries are admitted only after the Worker acknowledges the current native prompt, so private/excluded turns, stale branches and failed init requests cannot inherit memory or create orphan captures. The remote central Worker transport (`CLAUDE_MEM_WORKER_URL`), client-side secret redaction, optional semantic injection, Work State and explicit cross-client tools remain custom extensions. `CLAUDE_MEM_SEMANTIC_INJECT` defaults to `false` with `CLAUDE_MEM_SEMANTIC_INJECT_LIMIT=5`.
 
+## Pi installation
+
+The Pi bridge is a standard Pi git package. Install it globally with:
+
+```bash
+pi install git:https://github.com/nonlog/central-memory-bridges
+```
+
+It then appears in `pi list` and is stored under Pi's managed git package directory instead of `~/.pi/agent/extensions/`.
+
+Update it with either:
+
+```bash
+pi update git:https://github.com/nonlog/central-memory-bridges
+# or update all managed Pi packages
+pi update
+```
+
+If migrating from the legacy loose extension, remove `~/.pi/agent/extensions/central-claude-mem.ts` after the managed package is installed. Do not keep both copies enabled because both would register the same lifecycle handlers and tools.
+
 ## Exact-ID memory deletion
 
 The central Worker already exposes official production DELETE routes for observations, summaries, and prompts. `memory-admin-mcp/` and `openclaw-memory-admin/` expose that capability through one constrained contract:
