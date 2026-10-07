@@ -1,0 +1,24 @@
+name: Pi extension contract
+
+on:
+  push:
+    paths:
+      - "pi-extension/**"
+      - ".github/workflows/pi-extension-contract.yml"
+  pull_request:
+    paths:
+      - "pi-extension/**"
+      - ".github/workflows/pi-extension-contract.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify lifecycle contract
+        run: node pi-extension/contract.test.mjs
+      - name: Verify TypeScript syntax and imports
+        run: npx --yes esbuild@0.25.10 pi-extension/index.ts --bundle --platform=node --packages=external --outfile=/tmp/pi-extension.js

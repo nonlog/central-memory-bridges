@@ -178,240 +178,431 @@ function contentSessionId(ctx: any, fallback: string): string {
 }
 
 export default function centralClaudeMem(pi: ExtensionAPI) {
-  let activeProject = projectForCwd();
-  let activeCwd = process.cwd();
-  let activeSessionId = "pi-" + crypto.randomUUID();
-  let startupContext = "";
-  let startupContextDelivered = false;
-  let pendingPrompt = "";
-  let pendingAssistant = "";
-  let pendingSummary = false;
-  let observedModel = "";
-  const inFlight = new Set<Promise<void>>();
-  let backgroundTail: Promise<void> = Promise.resolve();
-
-  const refreshSession = (ctx: any, cwd?: string) => {
-    const resolvedCwd = cwd || ctx?.cwd || process.cwd();
-    activeCwd = resolvedCwd;
-    activeProject = projectForCwd(resolvedCwd);
-    activeSessionId = contentSessionId(ctx, "pi-" + crypto.randomUUID());
+  type SessionState = {
+    id: string;
+    cwd: string;
+    project: string;
+    memory: string;
+    semanticContext: string;
+    entryId?: string;
+    initialized: boolean;
+    anchored: boolean;
+    excluded: boolean;
+    needsSummary: boolean;
+    lastAssistant: string;
+    observedModel: string;
+    queue: Promise<void>;
   };
 
-  const background = (task: () => Promise<unknown>): Promise<void> => {
-    const tracked = backgroundTail
+  let current: SessionState | undefined;
+  let notificationShown = false;
+  const on = (event: string, handler: (event: any, ctx: any) => unknown) => (pi as any).on(event, handler);
+
+  const extractTextContent = (content: unknown): string => {
+    if (typeof content === "string") return content;
+    if (!Array.isArray(content)) return "";
+    return content
+      .filter((part: any) => part && part.type === "text" && typeof part.text === "string")
+      .map((part: any) => part.text)
+      .join("\n");
+  };
+
+  const assistantText = (message: any): string => {
+    if (!message || message.role !== "assistant") return "";
+    return extractTextContent(message.content).trim();
+  };
+
+  const sessionId = (ctx: any): string => {
+    try {
+      const value = ctx?.sessionManager?.getSessionId?.();
+      return typeof value === "string" ? value.trim() : "";
+    } catch {
+      return "";
+    }
+  };
+
+  const sameSession = (session: SessionState, ctx: any): boolean => {
+    const id = sessionId(ctx);
+    const cwd = String(ctx?.cwd || session.cwd);
+    return Boolean(id) && id === session.id && cwd === session.cwd;
+  };
+
+  const disarmTurn = (session: SessionState, keepEntry = false) => {
+    if (!keepEntry) session.entryId = undefined;
+    session.initialized = false;
+    session.anchored = false;
+    session.excluded = true;
+    session.needsSummary = false;
+    session.lastAssistant = "";
+    session.semanticContext = "";
+    session.observedModel = "";
+  };
+
+  const warn = (ctx: any, error: unknown) => {
+    if (notificationShown || !ctx?.hasUI || !ctx?.ui?.notify) return;
+    notificationShown = true;
+    try {
+      ctx.ui.notify("Central Claude-Mem is unavailable; Pi will continue without memory capture. " + String(error), "warning");
+    } catch {}
+  };
+
+  const enqueue = (session: SessionState, ctx: any, task: () => Promise<void>): Promise<void> => {
+    const next = session.queue
       .then(task, task)
-      .then(() => undefined)
-      .catch(() => undefined);
-    backgroundTail = tracked;
-    inFlight.add(tracked);
-    void tracked.then(() => inFlight.delete(tracked));
-    return tracked;
+      .catch((error) => {
+        warn(ctx, error);
+      });
+    session.queue = next;
+    return next;
   };
 
-  const flushBackground = async (timeoutMs = SHUTDOWN_FLUSH_MS) => {
-    const pending = Array.from(inFlight);
-    if (pending.length === 0) return;
+  const flushSession = async (session: SessionState, timeoutMs = SHUTDOWN_FLUSH_MS) => {
     await Promise.race([
-      Promise.allSettled(pending),
+      session.queue.catch(() => undefined),
       new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
     ]);
   };
 
-  const loadSessionContext = async () => {
-    startupContext = "";
-    startupContextDelivered = false;
+  const loadSessionContext = async (session: SessionState) => {
+    session.memory = "";
     try {
-      const projects = BASE_PROJECT + "," + activeProject;
+      const projects = BASE_PROJECT + "," + session.project;
       const query = new URLSearchParams({ projects });
       const raw = await request("/api/context/inject?" + query.toString(), {}, SESSION_CONTEXT_TIMEOUT_MS);
       const stripped = stripWorkStateContext(extractWorkerText(raw));
       const blocks: string[] = [];
+
       if (stripped.hadWorkState) {
         try {
-          const q = new URLSearchParams({ cwd: activeCwd });
+          const q = new URLSearchParams({ cwd: session.cwd });
           const state = await request("/api/work-state?" + q.toString(), {}, HTTP_TIMEOUT_MS);
           const stateText = extractWorkerText(state).trim();
           if (stateText) blocks.push(WORK_STATE_GUIDANCE + "\n" + stateText);
         } catch {}
       }
+
       if (stripped.text.trim()) blocks.push(stripped.text.trim());
-      startupContext = blocks.join("\n\n").slice(0, MAX_CONTEXT_CHARS);
+      session.memory = blocks.join("\n\n").slice(0, MAX_CONTEXT_CHARS);
     } catch {
-      startupContext = "";
+      session.memory = "";
     }
   };
 
-  const queueSummary = (): Promise<void> => {
-    if (!pendingSummary) return Promise.resolve();
-    const assistant = pendingAssistant.trim();
-    const sid = activeSessionId;
-    const model = observedModel;
-    pendingPrompt = "";
-    pendingAssistant = "";
-    pendingSummary = false;
-    observedModel = "";
-    if (!assistant) return Promise.resolve();
-
-    const safeAssistant = redactSecrets(assistant).slice(0, MAX_ASSISTANT_CHARS);
-    return background(() =>
-      request(
-        "/api/sessions/summarize",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            contentSessionId: sid,
-            last_assistant_message: safeAssistant,
-            platformSource: PLATFORM_SOURCE,
-            observedModel: model || undefined,
-            cwd: activeCwd,
-          }),
-        },
-        HTTP_TIMEOUT_MS,
-      ),
-    );
-  };
-
-  pi.on("session_start", async (_event, ctx) => {
-    refreshSession(ctx);
-    pendingPrompt = "";
-    pendingAssistant = "";
-    pendingSummary = false;
-    observedModel = "";
-    await loadSessionContext();
-  });
-
-  pi.on("session_compact", async (_event, ctx) => {
-    refreshSession(ctx);
-    await loadSessionContext();
-  });
-
-  pi.on("before_agent_start", async (event, ctx) => {
-    refreshSession(ctx, event.systemPromptOptions?.cwd || ctx.cwd);
-    pendingPrompt = String(event.prompt || "");
-    pendingAssistant = "";
-    pendingSummary = !isTrivialPrompt(pendingPrompt);
-    observedModel = pendingSummary ? String(ctx.model?.id || "") : "";
-    if (!pendingSummary) return;
-
-    const safePrompt = redactSecrets(pendingPrompt).slice(0, MAX_PROMPT_CHARS);
-    const contexts: string[] = [];
-
-    if (!startupContextDelivered) {
-      startupContextDelivered = true;
-      if (startupContext) contexts.push(startupContext);
+  const beginSession = async (_event: any, ctx: any) => {
+    const id = sessionId(ctx);
+    const cwd = String(ctx?.cwd || process.cwd());
+    if (!id || !cwd) {
+      current = undefined;
+      return;
     }
 
+    const session: SessionState = {
+      id,
+      cwd,
+      project: projectForCwd(cwd),
+      memory: "",
+      semanticContext: "",
+      initialized: false,
+      anchored: false,
+      excluded: true,
+      needsSummary: false,
+      lastAssistant: "",
+      observedModel: "",
+      queue: Promise.resolve(),
+    };
+    current = session;
+    notificationShown = false;
+    await loadSessionContext(session);
+  };
+
+  const resetTurn = async (_event: any, ctx: any) => {
+    if (!current || !sameSession(current, ctx)) await beginSession(_event, ctx);
+    const session = current;
+    if (!session) return;
+    disarmTurn(session);
+    session.observedModel = String(ctx?.model?.id || "");
+  };
+
+  const selectEntry = (session: SessionState, ctx: any, user: any, prompt: string): any | undefined => {
     try {
-      await request(
-        "/api/sessions/init",
+      if (current !== session || !sameSession(session, ctx) || typeof ctx?.sessionManager?.getBranch !== "function") return;
+      const branch = ctx.sessionManager.getBranch();
+      if (!Array.isArray(branch)) return;
+      const entry = [...branch].reverse().find(
+        (item: any) => item?.type === "message" && item?.message?.role === "user",
+      );
+      if (
+        !entry ||
+        typeof entry.id !== "string" ||
+        !/^[^\s\x00-\x1f\x7f]{1,256}$/.test(entry.id) ||
+        !user ||
+        typeof user.timestamp !== "number" ||
+        !Number.isFinite(user.timestamp) ||
+        entry.message?.timestamp !== user.timestamp ||
+        extractTextContent(entry.message?.content) !== prompt
+      ) return;
+      return entry;
+    } catch {
+      return;
+    }
+  };
+
+  const loadSemanticContext = async (session: SessionState, prompt: string) => {
+    session.semanticContext = "";
+    if (!SEMANTIC_INJECT || prompt.length < 20) return;
+    try {
+      const semantic = await request(
+        "/api/context/semantic",
         {
           method: "POST",
           body: JSON.stringify({
-            contentSessionId: activeSessionId,
-            project: activeProject,
-            prompt: safePrompt,
+            q: prompt,
+            project: session.project,
+            limit: SEMANTIC_INJECT_LIMIT,
             platformSource: PLATFORM_SOURCE,
-            cwd: activeCwd,
           }),
         },
         HTTP_TIMEOUT_MS,
       );
+      session.semanticContext = String(semantic?.context || "").trim().slice(0, MAX_CONTEXT_CHARS);
     } catch {
-      // Memory must never prevent Pi from starting the agent turn.
+      session.semanticContext = "";
+    }
+  };
+
+  const queueSummary = (session: SessionState | undefined, ctx: any): Promise<void> => {
+    if (!session || !session.anchored || session.excluded || !session.needsSummary) return Promise.resolve();
+    const entryId = session.entryId;
+    const assistant = session.lastAssistant.trim();
+    if (!assistant) return Promise.resolve();
+
+    const body = {
+      contentSessionId: session.id,
+      last_assistant_message: redactSecrets(assistant).slice(0, MAX_ASSISTANT_CHARS),
+      platformSource: PLATFORM_SOURCE,
+      observedModel: session.observedModel || undefined,
+      cwd: session.cwd,
+    };
+
+    return enqueue(session, ctx, async () => {
+      if (!entryId || session.entryId !== entryId || !session.anchored || session.excluded || !session.needsSummary) return;
+      await request(
+        "/api/sessions/summarize",
+        { method: "POST", body: JSON.stringify(body) },
+        HTTP_TIMEOUT_MS,
+      );
+      if (session.entryId === entryId) session.needsSummary = false;
+    });
+  };
+
+  on("session_start", beginSession);
+  // Older Pi releases emitted switch/fork separately; current Pi emits session_start.
+  on("session_switch", beginSession);
+  on("session_fork", beginSession);
+
+  on("before_agent_start", resetTurn);
+  on("session_tree", resetTurn);
+
+  // Pi persists the user SessionEntry before context_with_system. This is the
+  // first lifecycle point where the real persisted entry.id can safely become
+  // Worker nativePromptId. before_agent_start is intentionally admission-free.
+  on("context_with_system", async (event: any, ctx: any) => {
+    if (!current || !sameSession(current, ctx)) await beginSession(event, ctx);
+    const session = current;
+    const messages = event?.messages;
+    if (!session) return;
+
+    if (!Array.isArray(messages) || messages[0]?.role !== "system" || typeof messages[0]?.content !== "string") {
+      disarmTurn(session);
+      return;
     }
 
-    if (SEMANTIC_INJECT && safePrompt.length >= 20) {
+    const user = [...messages].reverse().find((message: any) => message?.role === "user");
+    const prompt = extractTextContent(user?.content);
+    const baseSystem = messages[0].content;
+
+    await enqueue(session, ctx, async () => {
       try {
-        const semantic = await request(
-          "/api/context/semantic",
-          {
-            method: "POST",
-            body: JSON.stringify({
-              q: safePrompt,
-              project: activeProject,
-              limit: SEMANTIC_INJECT_LIMIT,
-              platformSource: PLATFORM_SOURCE,
-            }),
-          },
-          HTTP_TIMEOUT_MS,
-        );
-        const semanticContext = String(semantic?.context || "").trim();
-        if (semanticContext) contexts.push(semanticContext.slice(0, MAX_CONTEXT_CHARS));
-      } catch {
-        // Optional semantic memory degrades silently, matching upstream hooks.
-      }
-    }
+        const entry = selectEntry(session, ctx, user, prompt);
+        if (!entry || !prompt.trim()) {
+          disarmTurn(session);
+          return;
+        }
 
-    const additionalContext = contexts.filter(Boolean).join("\n\n").trim();
+        if (session.entryId !== entry.id) {
+          disarmTurn(session);
+          session.entryId = entry.id;
+          session.observedModel = String(ctx?.model?.id || "");
+        }
+
+        if (!session.initialized) {
+          // Do not fall back to legacy text identity. A capability probe is
+          // read-only and prevents silently attaching tools to the wrong turn.
+          const capability = await request("/api/sessions/native-prompt-capability", {}, HTTP_TIMEOUT_MS);
+          if (capability?.nativePromptId !== 1) {
+            throw new Error("Worker does not support native Pi prompt identity.");
+          }
+
+          if (selectEntry(session, ctx, user, prompt)?.id !== entry.id) {
+            disarmTurn(session, true);
+            return;
+          }
+
+          const safePrompt = redactSecrets(prompt).slice(0, MAX_PROMPT_CHARS);
+          const result = await request(
+            "/api/sessions/init",
+            {
+              method: "POST",
+              body: JSON.stringify({
+                contentSessionId: session.id,
+                project: session.project,
+                prompt: safePrompt,
+                platformSource: PLATFORM_SOURCE,
+                cwd: session.cwd,
+                nativePromptId: entry.id,
+              }),
+            },
+            HTTP_TIMEOUT_MS,
+          );
+
+          if (selectEntry(session, ctx, user, prompt)?.id !== entry.id) {
+            disarmTurn(session, true);
+            return;
+          }
+
+          if (result?.skipped === true && result?.reason !== "duplicate") {
+            session.initialized = true;
+            session.anchored = false;
+            session.excluded = true;
+            session.needsSummary = false;
+            return;
+          }
+
+          if (result?.nativePromptId !== entry.id || typeof result?.sessionDbId !== "number") {
+            throw new Error("Worker did not acknowledge the persisted Pi user-entry ID.");
+          }
+
+          session.initialized = true;
+          session.anchored = result?.nativePromptCurrent === true;
+          session.excluded = !session.anchored;
+          session.needsSummary = session.anchored;
+
+          if (session.anchored) await loadSemanticContext(session, safePrompt);
+        }
+      } catch (error) {
+        disarmTurn(session, true);
+        throw error;
+      }
+    });
+
+    if (current !== session || !session.anchored || session.excluded) return;
+    const blocks = [session.memory, session.semanticContext].filter((value) => Boolean(value && value.trim()));
+    const additionalContext = blocks.join("\n\n").trim();
     if (!additionalContext) return;
 
+    const [head, ...tail] = messages;
     return {
-      message: {
-        customType: "central-claude-mem-context",
-        content: additionalContext,
-        display: false,
-      },
+      messages: [
+        {
+          ...head,
+          content: baseSystem + "\n\n<claude-mem-context>\n" + additionalContext + "\n</claude-mem-context>",
+        },
+        ...tail,
+      ],
     };
   });
 
-  pi.on("tool_result", async (event, ctx) => {
-    const toolName = String((event as any).toolName || "");
-    if (!toolName || toolName.startsWith("claude_mem_") || toolName.startsWith("work_state_") || SKIP_TOOLS.has(toolName.toLowerCase())) return;
+  on("tool_result", (event: any, ctx: any) => {
+    const session = current;
+    const toolName = String(event?.toolName || "");
+    if (
+      !session ||
+      !toolName ||
+      toolName.startsWith("claude_mem_") ||
+      toolName.startsWith("work_state_") ||
+      toolName.startsWith("mem_") ||
+      SKIP_TOOLS.has(toolName.toLowerCase()) ||
+      !session.anchored ||
+      session.excluded
+    ) return;
 
-    const sid = activeSessionId;
-    const cwd = ctx.cwd || process.cwd();
-    const toolUseId = String((event as any).toolCallId || "").trim();
-    const toolInput = sanitizeStructured((event as any).input);
-    const toolResponse = serializeToolResponse(event);
+    const entryId = session.entryId;
+    const body = {
+      contentSessionId: session.id,
+      platformSource: PLATFORM_SOURCE,
+      tool_name: toolName,
+      ...(String(event?.toolCallId || "").trim() ? { tool_use_id: String(event.toolCallId).trim() } : {}),
+      tool_input: sanitizeStructured(event?.input),
+      tool_response: serializeToolResponse(event),
+      cwd: session.cwd,
+    };
 
-    background(() =>
-      request(
+    // Preserve upstream prompt -> tool -> summary ordering without adding the
+    // remote HTTPS round-trip to Pi's tool-result critical path.
+    void enqueue(session, ctx, async () => {
+      if (!entryId || session.entryId !== entryId) return;
+      await request(
         "/api/sessions/observations",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            contentSessionId: sid,
-            platformSource: PLATFORM_SOURCE,
-            tool_name: toolName,
-            ...(toolUseId ? { tool_use_id: toolUseId } : {}),
-            tool_input: toolInput,
-            tool_response: toolResponse,
-            cwd,
-          }),
-        },
+        { method: "POST", body: JSON.stringify(body) },
         HTTP_TIMEOUT_MS,
-      ),
-    );
+      );
+    });
   });
 
-  pi.on("turn_end", async (event) => {
-    const text = messageText((event as any).message);
-    if (text) pendingAssistant = text;
-  });
+  const captureAssistant = (message: any) => {
+    const text = assistantText(message);
+    if (current && text) current.lastAssistant = text;
+  };
 
-  pi.on("agent_end", async (event) => {
-    for (let i = (event as any).messages?.length - 1; i >= 0; i--) {
-      const text = messageText((event as any).messages[i]);
-      if (text) {
-        pendingAssistant = text;
-        break;
+  on("message_end", (event: any) => captureAssistant(event?.message));
+  on("turn_end", (event: any) => captureAssistant(event?.message));
+
+  on("agent_end", async (event: any, ctx: any) => {
+    if (current && Array.isArray(event?.messages)) {
+      for (let i = event.messages.length - 1; i >= 0; i--) {
+        const text = assistantText(event.messages[i]);
+        if (text) {
+          current.lastAssistant = text;
+          break;
+        }
       }
     }
+    await queueSummary(current, ctx);
   });
 
-  pi.on("agent_settled", async () => {
-    // Match upstream Stop-hook semantics: wait only until all observations and
-    // the summary request have reached the Worker's queue. The expensive AI
-    // summarization remains asynchronous inside claude-mem. This ordering also
-    // prevents the next /sessions/init from advancing promptNumber first.
-    await queueSummary();
+  // Keep compatibility with Pi builds that expose agent_settled; queueSummary
+  // is idempotent after a successful summary.
+  on("agent_settled", async (_event: any, ctx: any) => {
+    await queueSummary(current, ctx);
   });
 
-  pi.on("session_shutdown", async () => {
-    await queueSummary();
-    await flushBackground();
+  on("session_before_compact", async (_event: any, ctx: any) => {
+    await queueSummary(current, ctx);
   });
 
+  on("session_compact", async (_event: any, ctx: any) => {
+    const session = current;
+    if (!session || !sameSession(session, ctx)) return;
+    await loadSessionContext(session);
+  });
+
+  on("session_shutdown", async (_event: any, ctx: any) => {
+    const session = current;
+    await queueSummary(session, ctx);
+    if (session) await flushSession(session);
+  });
+
+  const toolResult = (text: string, details: Record<string, unknown> = {}) => ({
+    content: [{ type: "text" as const, text }],
+    details,
+  });
+
+  const executeRead = async (route: string, timeoutMs = SEARCH_TIMEOUT_MS) => {
+    const raw = await request(route, {}, timeoutMs);
+    return extractWorkerText(raw);
+  };
+
+  // Preserve the existing cross-client search tool name for compatibility.
   pi.registerTool({
     name: "claude_mem_search",
     label: "Central Memory Search",
@@ -427,10 +618,82 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
     async execute(_toolCallId, params) {
       const q = new URLSearchParams({ query: String(params.query), limit: String(params.limit || 8) });
       try {
-        const raw = await request("/api/search/observations?" + q.toString(), {}, SEARCH_TIMEOUT_MS);
-        return { content: [{ type: "text", text: extractWorkerText(raw) }], details: { source: "central-claude-mem" } };
+        return toolResult(await executeRead("/api/search/observations?" + q.toString()), { source: "central-claude-mem" });
       } catch (error: any) {
-        return { content: [{ type: "text", text: "Central memory search failed: " + error.message }], details: { error: true } };
+        return toolResult("Central memory search failed: " + error.message, { error: true });
+      }
+    },
+  });
+
+  // Upstream-compatible progressive recall tools. These coexist with the
+  // legacy claude_mem_* names so existing user prompts do not break.
+  pi.registerTool({
+    name: "mem_search",
+    label: "Memory Search",
+    description: "Search memory for an index of observation IDs; use mem_timeline, then fetch only useful observations.",
+    promptSnippet: "Search memory progressively",
+    parameters: Type.Object({
+      query: Type.String({ minLength: 1, maxLength: 1000 }),
+      limit: Type.Optional(Type.Number({ minimum: 1, maximum: 50 })),
+    }),
+    async execute(_toolCallId, params) {
+      const q = new URLSearchParams({ query: String(params.query), limit: String(params.limit || 10) });
+      try {
+        return toolResult(await executeRead("/api/search?" + q.toString()), { source: "central-claude-mem" });
+      } catch (error: any) {
+        return toolResult("Memory search failed: " + error.message, { error: true });
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "mem_timeline",
+    label: "Memory Timeline",
+    description: "Inspect the neighborhood of an observation ID or search query. Supply exactly one of anchor or query.",
+    promptSnippet: "Inspect nearby memory context",
+    parameters: Type.Object({
+      anchor: Type.Optional(Type.Union([Type.Number(), Type.String()])),
+      query: Type.Optional(Type.String()),
+      depth_before: Type.Optional(Type.Number({ minimum: 0, maximum: 50 })),
+      depth_after: Type.Optional(Type.Number({ minimum: 0, maximum: 50 })),
+      project: Type.Optional(Type.String({ maxLength: 96 })),
+    }),
+    async execute(_toolCallId, params) {
+      if ((params.anchor === undefined) === (params.query === undefined)) {
+        return toolResult("Supply exactly one of anchor or query.", { error: true });
+      }
+      const q = new URLSearchParams();
+      if (params.anchor !== undefined) q.set("anchor", String(params.anchor));
+      if (params.query !== undefined) q.set("query", String(params.query));
+      if (params.depth_before !== undefined) q.set("depth_before", String(params.depth_before));
+      if (params.depth_after !== undefined) q.set("depth_after", String(params.depth_after));
+      if (params.project) q.set("project", safeProject(String(params.project)));
+      try {
+        return toolResult(await executeRead("/api/timeline?" + q.toString()), { source: "central-claude-mem" });
+      } catch (error: any) {
+        return toolResult("Memory timeline failed: " + error.message, { error: true });
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "mem_get_observations",
+    label: "Memory Observations",
+    description: "Fetch full observation records for IDs found by mem_search.",
+    promptSnippet: "Fetch selected memory observations",
+    parameters: Type.Object({
+      ids: Type.Array(Type.Number({ minimum: 1 }), { minItems: 1, maxItems: 100 }),
+    }),
+    async execute(_toolCallId, params) {
+      try {
+        const raw = await request(
+          "/api/observations/batch",
+          { method: "POST", body: JSON.stringify({ ids: params.ids }) },
+          SEARCH_TIMEOUT_MS,
+        );
+        return toolResult(extractWorkerText(raw), { source: "central-claude-mem" });
+      } catch (error: any) {
+        return toolResult("Memory observation fetch failed: " + error.message, { error: true });
       }
     },
   });
@@ -447,10 +710,9 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
     async execute(_toolCallId, params) {
       const q = new URLSearchParams({ project: safeProject(String(params.project)), limit: String(params.limit || 5) });
       try {
-        const raw = await request("/api/context/recent?" + q.toString(), {}, 10_000);
-        return { content: [{ type: "text", text: extractWorkerText(raw) }], details: { source: "central-claude-mem" } };
+        return toolResult(await executeRead("/api/context/recent?" + q.toString(), 10_000), { source: "central-claude-mem" });
       } catch (error: any) {
-        return { content: [{ type: "text", text: "Central recent memory failed: " + error.message }], details: { error: true } };
+        return toolResult("Central recent memory failed: " + error.message, { error: true });
       }
     },
   });
@@ -469,21 +731,22 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
       ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const cwd = ctx?.cwd || activeCwd || process.cwd();
+      const cwd = ctx?.cwd || current?.cwd || process.cwd();
       if (!params.fields || Object.keys(params.fields).length === 0) {
-        return { content: [{ type: "text", text: "fields must be a non-empty object" }], details: { error: true } };
+        return toolResult("fields must be a non-empty object", { error: true });
       }
       if (JSON.stringify(params.fields).length > 2_000) {
-        return { content: [{ type: "text", text: "fields must be at most 2000 characters as JSON" }], details: { error: true } };
+        return toolResult("fields must be at most 2000 characters as JSON", { error: true });
       }
       try {
-        const raw = await request("/api/work-state/entries", {
-          method: "POST",
-          body: JSON.stringify({ cwd, list: String(params.list), fields: params.fields }),
-        }, HTTP_TIMEOUT_MS);
-        return { content: [{ type: "text", text: extractWorkerText(raw) }], details: { source: "central-claude-mem" } };
+        const raw = await request(
+          "/api/work-state/entries",
+          { method: "POST", body: JSON.stringify({ cwd, list: String(params.list), fields: params.fields }) },
+          HTTP_TIMEOUT_MS,
+        );
+        return toolResult(extractWorkerText(raw), { source: "central-claude-mem" });
       } catch (error: any) {
-        return { content: [{ type: "text", text: "Work state write unavailable: " + error.message }], details: { error: true } };
+        return toolResult("Work state write unavailable: " + error.message, { error: true });
       }
     },
   });
@@ -498,15 +761,14 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
       includeClosed: Type.Optional(Type.Boolean()),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const cwd = ctx?.cwd || activeCwd || process.cwd();
+      const cwd = ctx?.cwd || current?.cwd || process.cwd();
       const q = new URLSearchParams({ cwd });
       if (params.list) q.set("list", String(params.list));
       if (params.includeClosed) q.set("includeClosed", "true");
       try {
-        const raw = await request("/api/work-state?" + q.toString(), {}, HTTP_TIMEOUT_MS);
-        return { content: [{ type: "text", text: extractWorkerText(raw) }], details: { source: "central-claude-mem" } };
+        return toolResult(await executeRead("/api/work-state?" + q.toString(), HTTP_TIMEOUT_MS), { source: "central-claude-mem" });
       } catch (error: any) {
-        return { content: [{ type: "text", text: "Work state read unavailable: " + error.message }], details: { error: true } };
+        return toolResult("Work state read unavailable: " + error.message, { error: true });
       }
     },
   });
@@ -521,8 +783,8 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
       project: Type.Optional(Type.String({ maxLength: 96 })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      refreshSession(ctx);
-      const project = safeProject(String(params.project || activeProject));
+      const cwd = String(ctx?.cwd || current?.cwd || process.cwd());
+      const project = safeProject(String(params.project || current?.project || projectForCwd(cwd)));
       const sid = "pi-remember-" + crypto.randomUUID();
       const content = redactSecrets(params.content).slice(0, 20_000);
       try {
@@ -535,7 +797,7 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
               project,
               prompt: "Remember this durable information for future sessions.",
               platformSource: PLATFORM_SOURCE,
-              cwd: activeCwd,
+              cwd,
             }),
           },
           HTTP_TIMEOUT_MS,
@@ -550,7 +812,7 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
               tool_name: "pi_memory_remember",
               tool_input: { source: "pi", kind: "explicit_remember" },
               tool_response: content,
-              cwd: ctx.cwd || process.cwd(),
+              cwd,
             }),
           },
           HTTP_TIMEOUT_MS,
@@ -563,14 +825,14 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
               contentSessionId: sid,
               last_assistant_message: content.slice(0, MAX_ASSISTANT_CHARS),
               platformSource: PLATFORM_SOURCE,
-              cwd: activeCwd,
+              cwd,
             }),
           },
           HTTP_TIMEOUT_MS,
         );
-        return { content: [{ type: "text", text: "Stored in central memory project " + project + "." }], details: { project, session_id: sid } };
+        return toolResult("Stored in central memory project " + project + ".", { project, session_id: sid });
       } catch (error: any) {
-        return { content: [{ type: "text", text: "Central memory write failed: " + error.message }], details: { error: true } };
+        return toolResult("Central memory write failed: " + error.message, { error: true });
       }
     },
   });

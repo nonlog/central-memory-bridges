@@ -5,7 +5,7 @@ Integration source for connecting multiple AI clients to one central `claude-mem
 ## Components
 
 - `hermes-provider/` — Hermes native `MemoryProvider` adapter. Automatic project-scoped recall and automatic turn capture; explicit cross-project search/recent plus cwd-scoped Work State tools (Worker 13.29+).
-- `pi-extension/` — Pi Coding Agent extension aligned to the upstream `claude-mem` lifecycle: one-shot session-start context, per-prompt session init with optional semantic injection, asynchronous tool-result observation capture and settled-run summaries, plus explicit search/recent/remember and cwd-scoped Work State tools (Worker 13.29+).
+- `pi-extension/` — Pi Coding Agent extension aligned to upstream Claude-mem 13.34+ native prompt capture: persisted Pi `SessionEntry.id` identity, branch/retry-safe admission, privacy-gated context injection, ordered tool/summary capture, progressive recall (`mem_search` / `mem_timeline` / `mem_get_observations`), plus central-only search/recent/remember, optional semantic recall and cwd-scoped Work State tools.
 - `chatgpt-mcp/` — least-privilege remote MCP/OAuth bridge for ChatGPT Business. Exposes only central-memory operations, not host administration; because ChatGPT has no real checkout cwd, it filters upstream cwd-bound Work State instructions instead of misrouting them to the bridge host.
 - `memory-admin-mcp/` — standalone stdio MCP for Claude Code and Codex that adds only exact-ID `claude_mem_forget` beside their official `claude-mem` integrations.
 - `openclaw-memory-admin/` — optional OpenClaw tool-only plugin exposing the same exact-ID `claude_mem_forget` contract without modifying the official OpenClaw `claude-mem` plugin.
@@ -26,7 +26,7 @@ Claude Code, Codex, and OpenClaw continue to use their official `claude-mem` int
 
 The custom OMP bridge was retired on 2026-10-06 and is no longer shipped or supported by this repository. Viewer/source-label compatibility for historical `platform_source=omp` records is retained.
 
-Pi mirrors the same lifecycle where Pi exposes an equivalent hook: session-start context is injected once, every substantive prompt initializes tracking, tool results are queued as observations with Pi's stable `toolCallId` forwarded as Worker `tool_use_id`, and `agent_settled` queues a summary. `CLAUDE_MEM_SEMANTIC_INJECT` defaults to `false` with `CLAUDE_MEM_SEMANTIC_INJECT_LIMIT=5`, matching upstream defaults. Pi has no equally non-invasive PreToolUse additional-context hook, so upstream file-context injection is intentionally not emulated.
+Pi follows the upstream 13.34+ native-capture lifecycle instead of deriving turn identity from prompt text. `before_agent_start` only resets turn state; the awaited `context_with_system` phase validates the active persisted user entry from `sessionManager.getBranch()`, probes `/api/sessions/native-prompt-capability`, and sends that entry's real ID as `nativePromptId`. Context, tool observations and summaries are admitted only after the Worker acknowledges the current native prompt, so private/excluded turns, stale branches and failed init requests cannot inherit memory or create orphan captures. The remote central Worker transport (`CLAUDE_MEM_WORKER_URL`), client-side secret redaction, optional semantic injection, Work State and explicit cross-client tools remain custom extensions. `CLAUDE_MEM_SEMANTIC_INJECT` defaults to `false` with `CLAUDE_MEM_SEMANTIC_INJECT_LIMIT=5`.
 
 ## Exact-ID memory deletion
 
