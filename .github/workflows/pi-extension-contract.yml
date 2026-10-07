@@ -24,14 +24,16 @@ jobs:
         run: node pi-extension/contract.test.mjs
       - name: Verify Pi package manifest
         run: |
-          node -e "const p=require('./package.json'); if(p.version!=='0.1.0') throw new Error('unexpected package version'); if(!p.pi?.extensions?.includes('./pi-extension/index.ts')) throw new Error('Pi extension resource missing'); if(p.dependencies?.typebox!=='1.3.27') throw new Error('typebox runtime dependency must match Pi 1.0.4 baseline')"
-      - name: Install package runtime dependencies
-        run: npm install --ignore-scripts --no-audit --no-fund
+          node -e "const p=require('./package.json'); if(p.version!=='0.1.1') throw new Error('unexpected package version'); if(!p.pi?.extensions?.includes('./pi-extension/index.ts')) throw new Error('Pi extension resource missing'); if(p.dependencies && Object.keys(p.dependencies).length) throw new Error('host-provided Pi modules must not be regular dependencies'); if(p.peerDependencies?.typebox!=='*') throw new Error('typebox must be a host-provided * peer'); if(p.peerDependencies?.['@earendil-works/pi-coding-agent']!=='*') throw new Error('Pi SDK must be a host-provided * peer')"
       - name: Install CI-only bundler
-        run: npm install --no-save --ignore-scripts --no-audit --no-fund esbuild@0.25.10
-      - name: Bundle extension for runtime tests
+        run: npm install --no-save --ignore-scripts --no-audit --no-fund --legacy-peer-deps esbuild@0.25.10
+      - name: Verify production bundle keeps host modules external
+        run: |
+          npx esbuild pi-extension/index.ts --bundle --platform=node --format=esm --packages=external --outfile=/tmp/pi-extension-host.mjs
+          grep -q 'from "typebox"' /tmp/pi-extension-host.mjs
+      - name: Bundle extension for lifecycle runtime tests
         run: |
           mkdir -p pi-extension/.ci
-          npx esbuild pi-extension/index.ts --bundle --platform=node --format=esm --outfile=pi-extension/.ci/index.mjs
+          npx esbuild pi-extension/index.ts --bundle --platform=node --format=esm --alias:typebox=./pi-extension/typebox.test-stub.mjs --outfile=pi-extension/.ci/index.mjs
       - name: Verify native Pi lifecycle behavior
         run: node pi-extension/runtime.test.mjs
