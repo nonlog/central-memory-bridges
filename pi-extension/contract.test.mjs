@@ -12,7 +12,12 @@ requireText('nativePromptCurrent === true', "stale branch suppression must use n
 requireText('ctx?.sessionManager?.getBranch', "active branch lookup is required");
 requireText('session.anchored', "capture must be gated on an admitted prompt");
 requireText('session.excluded', "excluded/private turns must be gated");
-requireText('name: "mem_search"', "upstream-compatible progressive search must be present");
+requireText('name: "mem_search"', "progressive search must be present");
+requireText('"/api/mem-search"', "Worker 13.35 progressive search endpoint must be used");
+requireText("maxDetails", "progressive detail budget must be exposed");
+requireText("depthBefore", "progressive timeline depth must be exposed");
+requireText("continuation", "guided continuation must be exposed");
+requireText("selectedIds", "guided selection must be exposed");
 requireText('name: "mem_timeline"', "upstream-compatible timeline must be present");
 requireText('name: "mem_get_observations"', "upstream-compatible observation fetch must be present");
 requireText('CLAUDE_MEM_WORKER_URL', "remote central Worker URL support must remain");
@@ -40,6 +45,14 @@ assert.ok(
   contextHook.includes('result?.skipped === true && result?.reason !== "duplicate"'),
   "Worker privacy/project exclusion must suppress injection and capture",
 );
+
+const memSearchTool = source.slice(
+  source.indexOf('name: "mem_search"'),
+  source.indexOf('name: "mem_timeline"'),
+);
+assert.ok(memSearchTool.includes('"/api/mem-search"'), "mem_search must call the progressive Worker endpoint");
+assert.ok(memSearchTool.includes('method: "POST"'), "mem_search must POST its progressive request");
+assert.ok(!memSearchTool.includes('"/api/search?"'), "mem_search must not use the legacy index-only endpoint");
 
 const toolHook = source.slice(
   source.indexOf('on("tool_result"'),

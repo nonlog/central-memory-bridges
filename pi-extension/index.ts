@@ -625,21 +625,85 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
     },
   });
 
-  // Upstream-compatible progressive recall tools. These coexist with the
-  // legacy claude_mem_* names so existing user prompts do not break.
+  // Worker 13.35+ progressive recall. This is the preferred search surface;
+  // mem_timeline and mem_get_observations remain below as compatibility tools.
   pi.registerTool({
     name: "mem_search",
     label: "Memory Search",
-    description: "Search memory for an index of observation IDs; use mem_timeline, then fetch only useful observations.",
-    promptSnippet: "Search memory progressively",
+    description: "Progressive claude-mem search. Use mode=auto for bounded index → context → selected details, or mode=guided and follow continuation/selectedIds.",
+    promptSnippet: "Search memory with progressive disclosure",
     parameters: Type.Object({
-      query: Type.String({ minLength: 1, maxLength: 1000 }),
-      limit: Type.Optional(Type.Number({ minimum: 1, maximum: 50 })),
+      query: Type.Optional(Type.String({ minLength: 1, maxLength: 500 })),
+      mode: Type.Optional(Type.String({ pattern: "^(guided|auto)$" })),
+      project: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
+      limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 20 })),
+      maxDetails: Type.Optional(Type.Integer({ minimum: 1, maximum: 5 })),
+      depthBefore: Type.Optional(Type.Integer({ minimum: 0, maximum: 3 })),
+      depthAfter: Type.Optional(Type.Integer({ minimum: 0, maximum: 3 })),
+      continuation: Type.Optional(Type.String({ pattern: "^ms_[A-Za-z0-9_-]{24}$" })),
+      selectedIds: Type.Optional(
+        Type.Array(
+          Type.Union([
+            Type.String({ minLength: 1, maxLength: 128 }),
+            Type.Integer(),
+          ]),
+          { maxItems: 5 },
+        ),
+      ),
     }),
     async execute(_toolCallId, params) {
-      const q = new URLSearchParams({ query: String(params.query), limit: String(params.limit || 10) });
+      const mode = params.mode === undefined ? "guided" : String(params.mode);
+      if (mode !== "guided" && mode !== "auto") {
+        return toolResult("mode must be guided or auto.", { error: true });
+      }
+
+      const continuation = typeof params.continuation === "string" ? params.continuation.trim() : "";
+      const query = typeof params.query === "string" ? params.query.trim() : "";
+
+      if (!continuation) {
+        if (!query) return toolResult("Start mem_search with a query.", { error: true });
+        if (Buffer.byteLength(query, "utf8") > 1024) {
+          return toolResult("query must be at most 1024 UTF-8 bytes.", { error: true });
+        }
+        if (params.selectedIds !== undefined) {
+          return toolResult("selectedIds requires the preceding step's continuation.", { error: true });
+        }
+      } else {
+        if (mode !== "guided") {
+          return toolResult("Continuations use guided mode.", { error: true });
+        }
+        if (!Array.isArray(params.selectedIds)) {
+          return toolResult("Choose selectedIds from the preceding mem-search step; [] ends the search.", { error: true });
+        }
+      }
+
+      const body: Record<string, unknown> = { mode };
+      if (query) body.query = query;
+      if (params.project !== undefined) {
+        const project = String(params.project).trim();
+        if (!project || Buffer.byteLength(project, "utf8") > 256) {
+          return toolResult("project must be nonempty and at most 256 UTF-8 bytes.", { error: true });
+        }
+        body.project = project;
+      }
+      if (params.limit !== undefined) body.limit = params.limit;
+      if (params.maxDetails !== undefined) body.maxDetails = params.maxDetails;
+      if (params.depthBefore !== undefined) body.depthBefore = params.depthBefore;
+      if (params.depthAfter !== undefined) body.depthAfter = params.depthAfter;
+      if (continuation) body.continuation = continuation;
+      if (params.selectedIds !== undefined) body.selectedIds = params.selectedIds;
+
       try {
-        return toolResult(await executeRead("/api/search?" + q.toString()), { source: "central-claude-mem" });
+        const raw = await request(
+          "/api/mem-search",
+          { method: "POST", body: JSON.stringify(body) },
+          SEARCH_TIMEOUT_MS,
+        );
+        return toolResult(extractWorkerText(raw), {
+          source: "central-claude-mem",
+          progressive: true,
+          mode,
+        });
       } catch (error: any) {
         return toolResult("Memory search failed: " + error.message, { error: true });
       }

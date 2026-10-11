@@ -10,7 +10,7 @@ let nativePromptCurrent = true;
 globalThis.fetch = async (input, init = {}) => {
   const url = new URL(String(input));
   const body = typeof init.body === "string" ? JSON.parse(init.body) : undefined;
-  calls.push({ route: url.pathname, body });
+  calls.push({ route: url.pathname, method: String(init.method || "GET"), body });
 
   if (url.pathname === "/api/context/inject") return new Response("Useful project memory");
   if (url.pathname === "/api/sessions/native-prompt-capability") {
@@ -28,6 +28,16 @@ globalThis.fetch = async (input, init = {}) => {
   }
   if (url.pathname === "/api/sessions/observations") return Response.json({ ok: true });
   if (url.pathname === "/api/sessions/summarize") return Response.json({ ok: true });
+  if (url.pathname === "/api/mem-search") {
+    return Response.json({
+      content: [{
+        type: "text",
+        text: body?.continuation
+          ? "mem-search step 2 of 3 — context"
+          : "mem-search step 3 of 3 — selected details",
+      }],
+    });
+  }
   if (url.pathname === "/api/search") return new Response("search index");
   if (url.pathname === "/api/timeline") return new Response("timeline");
   if (url.pathname === "/api/observations/batch") return Response.json({ content: [{ type: "text", text: "observation" }] });
@@ -182,6 +192,45 @@ assert.equal(
   calls.filter((call) => call.route === "/api/sessions/observations").length,
   writesBeforeFailureTool,
 );
+
+const autoSearch = await tools.get("mem_search").execute("mem-auto", {
+  query: "parser fix",
+  mode: "auto",
+  project: "pi-project",
+  limit: 8,
+  maxDetails: 2,
+  depthBefore: 1,
+  depthAfter: 1,
+});
+const autoCall = [...calls].reverse().find((call) => call.route === "/api/mem-search");
+assert.equal(autoCall.method, "POST");
+assert.deepEqual(autoCall.body, {
+  mode: "auto",
+  query: "parser fix",
+  project: "pi-project",
+  limit: 8,
+  maxDetails: 2,
+  depthBefore: 1,
+  depthAfter: 1,
+});
+assert.match(autoSearch.content[0].text, /mem-search step 3 of 3/);
+
+const continuation = "ms_123456789012345678901234";
+const guidedSearch = await tools.get("mem_search").execute("mem-guided", {
+  mode: "guided",
+  continuation,
+  selectedIds: ["S10", 20],
+});
+const guidedCall = [...calls].reverse().find((call) =>
+  call.route === "/api/mem-search" && call.body?.continuation === continuation
+);
+assert.equal(guidedCall.method, "POST");
+assert.deepEqual(guidedCall.body, {
+  mode: "guided",
+  continuation,
+  selectedIds: ["S10", 20],
+});
+assert.match(guidedSearch.content[0].text, /mem-search step 2 of 3/);
 
 assert.ok(tools.has("mem_search"));
 assert.ok(tools.has("mem_timeline"));

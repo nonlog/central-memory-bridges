@@ -1,16 +1,24 @@
 {
   "name": "@nonlog/central-memory-bridges",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Pi package for the central Claude-Mem bridge, with companion bridge sources for a shared remote Worker.",
   "private": true,
   "type": "module",
-  "keywords": ["pi-package", "pi", "pi-coding-agent", "claude-mem", "memory"],
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-coding-agent",
+    "claude-mem",
+    "memory"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/nonlog/central-memory-bridges.git"
   },
   "pi": {
-    "extensions": ["./pi-extension/index.ts"]
+    "extensions": [
+      "./pi-extension/index.ts"
+    ]
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
