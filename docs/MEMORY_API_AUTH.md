@@ -2,7 +2,7 @@
 
 The public `claude-mem.414222.xyz` worker routes MUST require a 256-bit API key in the `X-Claude-Mem-Key` HTTP header. The Worker remains bound to `127.0.0.1:37777` on the VPS. Its upstream source is not patched for authentication.
 
-The key is randomly generated on the VPS and stored in a root-only Nginx map file (`/etc/nginx/conf.d/claude-mem-api-keys.conf`). The machine vhost's catch-all `location /` must return 401 unless the Nginx map authorizes the header. That protects both `/api/*` and any future non-OAuth routes. Nginx `nginx -t` and an anonymous probe must pass before and after reload. Never paste a real key into code, docs, issues, command logs, or CI.
+The key is randomly generated on the VPS and stored in a root-only Nginx map file (`/etc/nginx/conf.d/claude-mem-api-keys.conf`). The machine vhost's catch-all `location /` must return 401 unless the Nginx map authorizes the header. That protects both `/api/*` and any future non-OAuth routes. Use `map_hash_bucket_size 128;` for a 64-character key. Strip the header upstream with `proxy_set_header X-Claude-Mem-Key "";` after evaluating the Nginx map. Nginx `nginx -t` and an anonymous probe must pass before and after reload. Never paste a real key into code, docs, issues, command logs, or CI.
 
 Keep the OAuth discovery paths, `/chatgpt-mcp/*` and the admin hostname's existing Basic Auth separate. The ChatGPT MCP bridge connects directly to the loopback Worker and uses its own OAuth bearer tokens, so it needs no machine API key. Hermes/OpenClaw on the VPS also use the loopback Worker.
 
