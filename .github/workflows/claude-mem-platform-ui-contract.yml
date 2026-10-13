@@ -6,6 +6,8 @@ on:
       - 'deploy/test_platform_ui_patch.py'
       - 'deploy/windows-central-memory-gateway.cjs'
       - 'deploy/windows-central-memory-gateway.test.cjs'
+      - 'deploy/windows-central-spool-relay.cjs'
+      - 'deploy/windows-central-spool-relay.test.cjs'
       - '.github/workflows/claude-mem-platform-ui-contract.yml'
   pull_request:
     paths:
@@ -13,6 +15,8 @@ on:
       - 'deploy/test_platform_ui_patch.py'
       - 'deploy/windows-central-memory-gateway.cjs'
       - 'deploy/windows-central-memory-gateway.test.cjs'
+      - 'deploy/windows-central-spool-relay.cjs'
+      - 'deploy/windows-central-spool-relay.test.cjs'
       - '.github/workflows/claude-mem-platform-ui-contract.yml'
   workflow_dispatch:
 
@@ -28,4 +32,4 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m unittest discover -s deploy -p 'test_platform_ui_patch.py' -v
-      - run: node --test deploy/windows-central-memory-gateway.test.cjs
+      - run: node --test deploy/windows-central-memory-gateway.test.cjs deploy/windows-central-spool-relay.test.cjs
