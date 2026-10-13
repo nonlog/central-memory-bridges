@@ -12,4 +12,4 @@ If a credential is pasted into a chat, terminal, issue, or commit, treat it as e
 
 Do not extend this layer with fuzzy deletion, project-wide wipes, arbitrary SQL, filesystem access, or shell execution. Agents should identify records through the normal memory search/recent/timeline surfaces before deletion.
 
-Prefer loopback Worker access for same-host OpenClaw deployments. When remote Worker authentication is required, keep bearer tokens in environment/secret storage and never commit them to this repository.
+Prefer loopback Worker access for same-host OpenClaw deployments. When remote Worker authentication is required, keep bearer tokens and the separate X-Claude-Mem-Key machine API credential in per-user secret files or environment/secret storage and never commit them to this repository. The public Nginx worker catch-all must require machine API authentication; do not rely on User-Agent filtering or on the separately protected admin hostname. See docs/MEMORY_API_AUTH.md.

@@ -10,6 +10,23 @@ const WORKER_URL_FILE = process.env.CLAUDE_MEM_WORKER_URL_FILE || DEFAULT_URL_FI
 const WORKER_TOKEN = String(process.env.CLAUDE_MEM_WORKER_TOKEN || '').trim();
 const HTTP_TIMEOUT_MS = 12_000;
 
+const API_KEY_FILE = process.env.CLAUDE_MEM_API_KEY_FILE || path.join(os.homedir(), '.claude-mem', 'central-api-key');
+
+function apiKeyHeaders(workerUrl) {
+  let key = String(process.env.CLAUDE_MEM_WORKER_API_KEY || '').trim();
+  if (!key) {
+    try { key = fs.readFileSync(API_KEY_FILE, 'utf8').trim(); } catch { /* local worker needs no credential */ }
+  }
+  if (!key) return {};
+  if (!/^[a-f0-9]{64}$/.test(key)) throw new Error('Invalid central memory API key format');
+  const remote = new URL(workerUrl);
+  if (remote.protocol !== 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(remote.hostname)) {
+    throw new Error('Central memory API key requires HTTPS or loopback');
+  }
+  return { 'X-Claude-Mem-Key': key };
+}
+
+
 function resolveWorkerUrl() {
   const fromEnv = String(process.env.CLAUDE_MEM_WORKER_URL || '').trim();
   if (fromEnv) return fromEnv.replace(/\/$/, '');
@@ -28,6 +45,7 @@ async function deleteRecord(type, id) {
   const workerUrl = resolveWorkerUrl();
   const headers = { accept: 'application/json' };
   if (WORKER_TOKEN) headers.authorization = `Bearer ${WORKER_TOKEN}`;
+  Object.assign(headers, apiKeyHeaders(workerUrl));
 
   const response = await fetch(`${workerUrl}/api/${type}/${id}`, {
     method: 'DELETE',

@@ -18,10 +18,14 @@ LABELS = {
 
 # Minified function names can change between upstream releases, so match the
 # semantics of the two source-registry functions rather than fixed identifiers.
+# Match the legacy array selector and the new project-filtered selector in 13.37+.
 BASE_REGISTRY_RE = re.compile(
-    r'function (?P<select>[A-Za-z_$][\w$]*)\((?P<select_arg>[A-Za-z_$][\w$]*)\)\{return (?P=select_arg)\.includes\("claude"\)\?"claude":(?P=select_arg)\.includes\("codex"\)\?"codex":(?P=select_arg)\[0\]\|\|null\}'
+    r'function (?P<select>[A-Za-z_$][\w$]*)\((?P<select_arg>[A-Za-z_$][\w$]*)\)\{'
+    r'(?P<prelude>let (?P<active>[A-Za-z_$][\w$]*)=(?P=select_arg)\.sources\.filter\([^;]+\);)?'
+    r'return (?P<chosen>[A-Za-z_$][\w$]*)\.includes\("claude"\)\?"claude":(?P=chosen)\.includes\("codex"\)\?"codex":(?P=chosen)\[0\]\|\|null\}'
     r'function (?P<registry>[A-Za-z_$][\w$]*)\((?P<registry_arg>[A-Za-z_$][\w$]*)\)\{let (?P<items>[A-Za-z_$][\w$]*)=\["claude","codex",\.\.\.(?P=registry_arg)\];return Array\.from\(new Set\((?P=items)\)\)\}'
 )
+
 OLD_PS_LABEL = 'function PS(e){return{claude:"✳ Claude",codex:"⌘ Codex",chatgpt:"◎ ChatGPT",pi:"π Pi",omp:"π OMP",hermes:"☤ Hermes",openclaw:"⌁ OpenClaw",cursor:"◫ Cursor"}[e]||e}'
 OLD_PS_LABEL_NO_OMP = 'function PS(e){return{claude:"✳ Claude",codex:"⌘ Codex",chatgpt:"◎ ChatGPT",pi:"π Pi",hermes:"☤ Hermes",openclaw:"⌁ OpenClaw",cursor:"◫ Cursor"}[e]||e}'
 LABEL_FN = "AgentDockSourceLabel"
@@ -29,7 +33,8 @@ LABEL_FUNC = 'function AgentDockSourceLabel(e){return{claude:"✳ Claude",codex:
 
 OLD_OPT = 'p.map(m=>S.default.createElement("option",{key:m,value:m},m))'
 SOURCE_OPT_RE = re.compile(
-    r'(?P<prefix>"Source:",(?P<react>[A-Za-z_$][\w$]*)\.default\.createElement\("select",\{[^{}]*\},)'
+    r'(?P<prefix>"Source:",(?P<react>[A-Za-z_$][\w$]*)\.default\.createElement\("select",\{[^{}]*\},'
+    r'(?:(?P=react)\.default\.createElement\("option",\{value:""\},"All sources"\),)?)'
     r'(?P<items>[A-Za-z_$][\w$]*)\.map\((?P<item>[A-Za-z_$][\w$]*)=>(?P=react)\.default\.createElement\("option",\{key:(?P=item),value:(?P=item)\},(?P=item)\)\)\)'
 )
 BADGE_RE = re.compile(r'className:`card-source source-\$\{(?P<v>[A-Za-z_$][\w$]*)\.platform_source\|\|"claude"\}`},(?P=v)\.platform_source\|\|"claude"\)')
@@ -60,10 +65,13 @@ CSS = '''    /* AgentDock platform identities BEGIN */
 '''
 
 
-def custom_registry(select_name: str, registry_name: str) -> str:
+def custom_registry(select_name: str, registry_name: str, arg: str, active: str, prelude: str) -> str:
+    # Preserve upstream's projectsBySource filtering, rather than selecting a
+    # source that has no project. Only expand priority among eligible sources.
     source_json = ','.join(f'"{x}"' for x in SOURCES)
     return (
-        f'function {select_name}(e){{for(let t of [{source_json}])if(e.includes(t))return t;return e[0]||null}}'
+        f'function {select_name}({arg}){{{prelude}for(let _adSource of [{source_json}])'
+        f'if({active}.includes(_adSource))return _adSource;return {active}[0]||null}}'
         f'function {registry_name}(e){{let t=[{source_json},...e];return Array.from(new Set(t))}}'
         f'{LABEL_FUNC}'
     )
@@ -85,7 +93,10 @@ def patch_bundle(p: Path):
         m = BASE_REGISTRY_RE.search(s)
         if not m:
             raise RuntimeError(f'viewer registry pattern changed: {p}')
-        s = s[:m.start()] + custom_registry(m.group('select'), m.group('registry')) + s[m.end():]
+        active = m.group('active') or m.group('select_arg')
+        if m.group('chosen') != active:
+            raise RuntimeError(f'viewer source selector variables changed: {p}')
+        s = s[:m.start()] + custom_registry(m.group('select'), m.group('registry'), m.group('select_arg'), active, m.group('prelude') or '') + s[m.end():]
         changed = True
 
     if OLD_OPT in s:
@@ -203,16 +214,20 @@ def run_patch(label: str, paths, func):
     return errors
 
 
-bundles = [Path('/root/.claude/plugins/marketplaces/thedotmack/plugin/ui/viewer-bundle.js')]
-bundles += [Path(x) for x in glob.glob('/root/.claude/plugins/cache/thedotmack/claude-mem/*/ui/viewer-bundle.js')]
-htmls = [Path('/root/.claude/plugins/marketplaces/thedotmack/plugin/ui/viewer.html')]
-htmls += [Path(x) for x in glob.glob('/root/.claude/plugins/cache/thedotmack/claude-mem/*/ui/viewer.html')]
-workers = [Path('/root/.claude/plugins/marketplaces/thedotmack/plugin/scripts/worker-service.cjs')]
-workers += [Path(x) for x in glob.glob('/root/.claude/plugins/cache/thedotmack/claude-mem/*/scripts/worker-service.cjs')]
+def main() -> int:
+    bundles = [Path('/root/.claude/plugins/marketplaces/thedotmack/plugin/ui/viewer-bundle.js')]
+    bundles += [Path(x) for x in glob.glob('/root/.claude/plugins/cache/thedotmack/claude-mem/*/ui/viewer-bundle.js')]
+    htmls = [Path('/root/.claude/plugins/marketplaces/thedotmack/plugin/ui/viewer.html')]
+    htmls += [Path(x) for x in glob.glob('/root/.claude/plugins/cache/thedotmack/claude-mem/*/ui/viewer.html')]
+    workers = [Path('/root/.claude/plugins/marketplaces/thedotmack/plugin/scripts/worker-service.cjs')]
+    workers += [Path(x) for x in glob.glob('/root/.claude/plugins/cache/thedotmack/claude-mem/*/scripts/worker-service.cjs')]
 
-errors = []
-errors += run_patch('viewer bundle', bundles, patch_bundle)
-errors += run_patch('viewer html', htmls, patch_html)
-errors += run_patch('worker source fallback', workers, patch_worker)
-if errors:
-    raise SystemExit(1)
+    errors = []
+    errors += run_patch('viewer bundle', bundles, patch_bundle)
+    errors += run_patch('viewer html', htmls, patch_html)
+    errors += run_patch('worker source fallback', workers, patch_worker)
+    return 1 if errors else 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

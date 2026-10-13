@@ -1,0 +1,10 @@
+# Installed as /etc/nginx/conf.d/claude-mem-api-keys.conf in Nginx http context.
+# File must be root-owned, chmod 0600, and never committed with a real key.
+map $http_x_claude_mem_key $claude_mem_api_authorized {
+    default 0;
+    "REPLACE_WITH_INDEPENDENT_64_HEX_API_KEY" 1;
+}
+# In /etc/nginx/sites-available/claude-mem-machine, in the catch-all
+# location / that proxies to http://127.0.0.1:37777, add:
+#     if ($claude_mem_api_authorized = 0) { return 401; }
+# Keep /.well-known/oauth-* and /chatgpt-mcp/* locations unchanged.

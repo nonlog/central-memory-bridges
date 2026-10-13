@@ -1,0 +1,31 @@
+name: Claude-mem Viewer contract
+on:
+  push:
+    paths:
+      - 'deploy/reapply-claude-mem-platform-ui.py'
+      - 'deploy/test_platform_ui_patch.py'
+      - 'deploy/windows-central-memory-gateway.cjs'
+      - 'deploy/windows-central-memory-gateway.test.cjs'
+      - '.github/workflows/claude-mem-platform-ui-contract.yml'
+  pull_request:
+    paths:
+      - 'deploy/reapply-claude-mem-platform-ui.py'
+      - 'deploy/test_platform_ui_patch.py'
+      - 'deploy/windows-central-memory-gateway.cjs'
+      - 'deploy/windows-central-memory-gateway.test.cjs'
+      - '.github/workflows/claude-mem-platform-ui-contract.yml'
+  workflow_dispatch:
+
+jobs:
+  viewer-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s deploy -p 'test_platform_ui_patch.py' -v
+      - run: node --test deploy/windows-central-memory-gateway.test.cjs

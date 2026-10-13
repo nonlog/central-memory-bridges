@@ -4,11 +4,29 @@
 // Semantic per-prompt injection is optional and disabled by default, matching upstream defaults.
 
 import crypto from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const WORKER = (process.env.CLAUDE_MEM_WORKER_URL || "https://claude-mem.414222.xyz").replace(/\/$/, "");
+const API_KEY_FILE = process.env.CLAUDE_MEM_API_KEY_FILE || path.join(os.homedir(), ".claude-mem", "central-api-key");
+
+function apiKeyHeaders(): Record<string, string> {
+  let key = String(process.env.CLAUDE_MEM_WORKER_API_KEY || "").trim();
+  if (!key) {
+    try { key = fs.readFileSync(API_KEY_FILE, "utf8").trim(); } catch { /* local clients can work without a key */ }
+  }
+  if (!key) return {};
+  if (!/^[a-f0-9]{64}$/.test(key)) throw new Error("Invalid central memory API key format");
+  const remote = new URL(WORKER);
+  if (remote.protocol !== "https:" && !["localhost", "127.0.0.1", "[::1]"].includes(remote.hostname)) {
+    throw new Error("Central memory API key requires HTTPS or loopback");
+  }
+  return { "X-Claude-Mem-Key": key };
+}
+
 const BASE_PROJECT = "pi";
 const PLATFORM_SOURCE = "pi";
 const HTTP_TIMEOUT_MS = 5_000;
@@ -156,7 +174,7 @@ function serializeToolResponse(event: any): unknown {
 async function request(route: string, init: RequestInit = {}, timeoutMs = HTTP_TIMEOUT_MS): Promise<any> {
   const response = await fetch(WORKER + route, {
     ...init,
-    headers: { "content-type": "application/json", ...(init.headers || {}) },
+    headers: { "content-type": "application/json", ...(init.headers || {}), ...apiKeyHeaders() },
     signal: AbortSignal.timeout(timeoutMs),
   });
   const text = await response.text();
