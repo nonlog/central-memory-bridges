@@ -40,12 +40,14 @@ class TestViewerRegistry(unittest.TestCase):
                 self.assertIn(patcher.LABEL_FUNC, result)
                 self.assertIn('AgentDockSourceLabel(_)', result)
                 self.assertIn('AgentDockSourceLabel(e.platform_source||"claude")', result)
-                self.assertIn('"chatgpt","pi","omp","hermes","openclaw"', result)
+                self.assertIn('"chatgpt","gemini","pi","omp","hermes","openclaw"', result)
+                self.assertIn('gemini:"✦ Gemini"', result)
                 patcher.patch_bundle(path)
                 self.assertEqual(result, path.read_text(encoding="utf-8"))
                 node_test = (
                     '\nconst assert=require("node:assert/strict");'
                     '\nassert.equal(B(["pi"]).includes("hermes"),true);'
+                    '\nassert.equal(B(["pi"]).includes("gemini"),true);'
                 )
                 if name == "legacy":
                     node_test += '\nassert.equal(A(["hermes"]),"hermes");'
@@ -53,6 +55,7 @@ class TestViewerRegistry(unittest.TestCase):
                     node_test += (
                         '\nassert.equal(A({sources:["claude","pi"],'
                         'projectsBySource:{claude:[],pi:["my-project"]}}),"pi");'
+                        '\nassert.equal(A({sources:["gemini"],projectsBySource:{gemini:["project"]}}),"gemini");'
                         '\nassert.equal(A({sources:["codex","hermes"],'
                         'projectsBySource:{codex:["x"],hermes:["y"]}}),"codex");'
                     )
