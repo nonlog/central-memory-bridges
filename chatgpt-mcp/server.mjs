@@ -5,6 +5,7 @@ import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js
 import express from 'express';
 import * as z from 'zod/v4';
 import { resolveClientPlatform } from './client-platform.mjs';
+import { registerWorkerMemoryTools } from './full-memory-tools.mjs';
 
 const PORT = Number(process.env.PORT || 18790);
 const HOST = process.env.HOST || '127.0.0.1';
@@ -15,7 +16,7 @@ const OAUTH_SECRET = process.env.OAUTH_SECRET || '';
 const ACCESS_TTL = 60 * 60;
 const REFRESH_TTL = 60 * 60 * 24 * 30;
 const DEFAULT_SCOPES = ['memory:read', 'memory:write', 'offline_access'];
-const ALLOWED_SCOPES = new Set(DEFAULT_SCOPES);
+const ALLOWED_SCOPES = new Set([...DEFAULT_SCOPES, 'memory:delete']);
 const DEFAULT_PROJECT = 'chatgpt-web';
 const DEFAULT_CONTEXT_PROJECTS = ['chatgpt', DEFAULT_PROJECT];
 const WORK_STATE_CONTEXT_HEADER = '# Work state: your to-do lists and working state';
@@ -190,9 +191,9 @@ async function writeTurn({ userMessage, assistantMessage, project = DEFAULT_PROJ
         contentSessionId: sid,
         platformSource: platform,
         tool_name: 'assistant_message',
-        tool_input: { source: platform === 'gemini' ? 'gemini-web' : 'chatgpt-web' },
+        tool_input: { source: platform.endsWith('-web') ? platform : `${platform}-web` },
         tool_response: assistant.slice(0, 1000),
-        cwd: platform === 'gemini' ? 'gemini-web' : 'chatgpt-web',
+        cwd: platform.endsWith('-web') ? platform : `${platform}-web`,
       }),
     }, 15000);
   }
@@ -216,8 +217,8 @@ function requireToolScope(scopes, requiredScope) {
 
 function makeServer(scopes = [], platform = 'chatgpt') {
   const grantedScopes = new Set(scopes);
-  const defaultProject = platform === 'gemini' ? 'gemini-web' : DEFAULT_PROJECT;
-  const defaultContextProjects = platform === 'gemini' ? ['gemini', 'gemini-web'] : DEFAULT_CONTEXT_PROJECTS;
+  const defaultProject = platform === 'gemini' ? 'gemini-web' : (platform.endsWith('-web') ? platform : DEFAULT_PROJECT);
+  const defaultContextProjects = platform === 'gemini' ? ['gemini', 'gemini-web'] : (platform.endsWith('-web') ? [platform] : DEFAULT_CONTEXT_PROJECTS);
   const server = new McpServer(
     { name: 'central-claude-mem', version: '1.0.0' },
     {
@@ -321,6 +322,7 @@ function makeServer(scopes = [], platform = 'chatgpt') {
     return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
   });
 
+  registerWorkerMemoryTools(server, { worker, platform, defaultProject, safeProject, redactSecrets, scopes });
   return server;
 }
 
@@ -344,12 +346,12 @@ const authMetadata = {
   grant_types_supported: ['authorization_code', 'refresh_token'],
   token_endpoint_auth_methods_supported: ['none'],
   code_challenge_methods_supported: ['S256'],
-  scopes_supported: DEFAULT_SCOPES,
+  scopes_supported: [...ALLOWED_SCOPES],
 };
 const resourceMetadata = {
   resource: RESOURCE_URL,
   authorization_servers: [EXTERNAL_BASE],
-  scopes_supported: DEFAULT_SCOPES,
+  scopes_supported: [...ALLOWED_SCOPES],
   bearer_methods_supported: ['header'],
 };
 
