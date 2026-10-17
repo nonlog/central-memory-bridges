@@ -22,6 +22,8 @@ Typical project scopes:
 - Pi: `pi`, `pi-<cwd basename>`
 - ChatGPT Web: `chatgpt`, `chatgpt-web`
 - Gemini Web: `gemini`, `gemini-web`
+- Claude Web: `claude-web` (distinct from Claude Code)
+- Grok Web: `grok-web`
 
 Claude Code, Codex, and OpenClaw continue to use their official `claude-mem` integrations for recall/capture/search. This repository adds only a narrow optional deletion layer beside them; it does not patch or fork the official integrations.
 
@@ -81,6 +83,12 @@ node deploy/apply-claude-mem-viewer-branding.mjs --root /path/to/claude-mem --ch
 Reapply it after `claude-mem` upgrades. The current patch is idempotent and replaces its own marked CSS block rather than accumulating duplicate overrides. Some `claude-mem` versions cache Viewer HTML at Worker startup, so verify the live response and restart/reload the Worker only when the served HTML remains stale.
 
 See [`docs/CLAUDE_MEM_VIEWER_BRANDING.md`](docs/CLAUDE_MEM_VIEWER_BRANDING.md) for icon provenance, deployment behavior, verification, upgrade handling, rollback, external-asset behavior, and trademark notes.
+
+## Web MCP memory capability matrix
+
+All four web clients can use the same `https://claude-mem.414222.xyz/chatgpt-mcp/mcp` Streamable HTTP endpoint and central Worker. OAuth client registration/callback determines platform_source. The original seven tools remain unchanged. Web MCP additionally exposes progressive search, durable manual notes, advanced search filters, timelines, observation/tool-use batches, exact record/list/project/stats retrieval, Work State read/write (stable virtual project cwd), TeamBrain query/brief, full session-start context, and Worker-supported deletion. Server-runtime-only `/v1/*` and filesystem/host admin capabilities are not routed to the central Worker.
+
+Deletion tools `claude_mem_forget` and `memory_delete_session` require the separately requested OAuth `memory:delete` scope and explicit exact IDs with `confirm: true`. Existing grants remain read/write; reconnect and authorize that scope before using deletion. The Worker handles sync-safe deletion; no SQL or arbitrary Worker endpoint is exposed. The `memory_admin_permissions` tool reports the granted scopes. Some Web providers may not offer a scope selection UI; in that case deletion remains unavailable until the OAuth client requests the new scope.
 
 ## Security
 
