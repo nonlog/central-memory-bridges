@@ -7,6 +7,29 @@ import process from 'node:process';
 const GEMINI_ICON_URL = 'https://commons.wikimedia.org/wiki/Special:Redirect/file/Google_Gemini_icon_2025.svg';
 const GEMINI_ICON_NAME = 'gemini-icon.svg';
 let geminiIconSource;
+const GROK_ICON_URL = 'https://commons.wikimedia.org/wiki/Special:Redirect/file/Grok-icon.svg';
+let grokIconSource;
+async function cacheGrokIcon(htmlFile) {
+  const target = path.join(path.dirname(htmlFile), 'grok-web-icon.svg');
+  if (fs.existsSync(target) || process.env.CLAUDE_MEM_BRANDING_NO_ICON_DOWNLOAD === '1') return;
+  if (grokIconSource === undefined) {
+    try {
+      const response = await fetch(GROK_ICON_URL, { signal: AbortSignal.timeout(8000) });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      const svg = await response.text();
+      if (svg.length < 100 || svg.length > 100000 || !/^<svg[\\s>]/.test(svg.trim()) || /<script\\b/i.test(svg)) {
+        throw new Error('Unexpected SVG asset');
+      }
+      grokIconSource = svg;
+    } catch (error) {
+      grokIconSource = '';
+      console.warn('Grok icon unavailable; remote fallback will be used:', error.message);
+    }
+  }
+  if (!grokIconSource) return;
+  fs.writeFileSync(target, grokIconSource, 'utf8');
+  console.log('CACHED ' + target);
+}
 
 async function cacheGeminiIcon(htmlFile) {
   const target = path.join(path.dirname(htmlFile), GEMINI_ICON_NAME);
@@ -72,7 +95,9 @@ const CSS = `
     .source-Codex,
     .source-claude,
     .source-claude-code,
+    .source-claude-web,
     .source-Claude,
+    .source-grok-web,
     .source-pi,
     .source-Pi,
     .source-hermes,
@@ -108,6 +133,16 @@ const CSS = `
     .source-claude-code::after,
     .source-Claude::after {
       content: 'Claude';
+      font-size: 10px;
+    }
+
+    .source-claude-web::after {
+      content: 'Claude Web';
+      font-size: 10px;
+    }
+
+    .source-grok-web::after {
+      content: 'Grok Web';
       font-size: 10px;
     }
 
@@ -176,10 +211,20 @@ const CSS = `
      */
     .source-claude::before,
     .source-claude-code::before,
+    .source-claude-web::before,
     .source-Claude::before {
       background-image:
         url('claude-favicon.ico'),
         url('https://claude.ai/favicon.ico');
+      background-size: contain, contain;
+      background-position: center, center;
+    }
+
+    /* Grok Web: matching xAI Grok icon mirrored by Wikimedia Commons. */
+    .source-grok-web::before {
+      background-image:
+        url('grok-web-icon.svg'),
+        url('https://commons.wikimedia.org/wiki/Special:Redirect/file/Grok-icon.svg');
       background-size: contain, contain;
       background-position: center, center;
     }
@@ -231,6 +276,18 @@ const CSS = `
       border-color: rgba(66, 133, 244, 0.24);
     }
 
+    .source-claude-web {
+      background: rgba(217, 119, 87, 0.11);
+      color: #aa573c;
+      border-color: rgba(217, 119, 87, 0.28);
+    }
+
+    .source-grok-web {
+      background: rgba(100, 116, 139, 0.12);
+      color: #475569;
+      border-color: rgba(100, 116, 139, 0.28);
+    }
+
     .source-pi,
     .source-Pi {
       background: rgba(124, 58, 237, 0.10);
@@ -265,6 +322,16 @@ const CSS = `
     [data-theme='dark'] .source-Gemini {
       color: #93c5fd;
       border-color: rgba(147, 197, 253, 0.24);
+    }
+
+    [data-theme='dark'] .source-claude-web {
+      color: #f1b39f;
+      border-color: rgba(241, 179, 159, 0.27);
+    }
+
+    [data-theme='dark'] .source-grok-web {
+      color: #cbd5e1;
+      border-color: rgba(203, 213, 225, 0.27);
     }
 
     [data-theme='dark'] .source-pi,
@@ -430,6 +497,7 @@ if (check) {
 
 for (const { relativePath, filePath } of files) {
   await cacheGeminiIcon(filePath);
+  await cacheGrokIcon(filePath);
   const before = fs.readFileSync(filePath, 'utf8');
   const after = patchHtml(before);
   if (after === before) {
