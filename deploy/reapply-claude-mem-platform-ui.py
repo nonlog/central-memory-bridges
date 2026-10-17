@@ -4,7 +4,7 @@ import glob
 import re
 import sys
 
-SOURCES = ["claude", "codex", "chatgpt", "gemini", "claude-web", "grok-web", "pi", "omp", "hermes", "openclaw"]
+SOURCES = ["claude", "codex", "chatgpt", "gemini", "claude-web", "grok-web", "muse-web", "executor", "pi", "omp", "hermes", "openclaw"]
 LABELS = {
     "claude": "✳ Claude",
     "codex": "⌘ Codex",
@@ -12,6 +12,8 @@ LABELS = {
     "gemini": "✦ Gemini",
     "claude-web": "✳ Claude Web",
     "grok-web": "◈ Grok Web",
+    "muse-web": "◈ Muse Web",
+    "executor": "⌘ Executor",
     "pi": "π Pi",
     "omp": "π OMP",
     "hermes": "☤ Hermes",
@@ -32,8 +34,8 @@ BASE_REGISTRY_RE = re.compile(
 OLD_PS_LABEL = 'function PS(e){return{claude:"✳ Claude",codex:"⌘ Codex",chatgpt:"◎ ChatGPT",pi:"π Pi",omp:"π OMP",hermes:"☤ Hermes",openclaw:"⌁ OpenClaw",cursor:"◫ Cursor"}[e]||e}'
 OLD_PS_LABEL_NO_OMP = 'function PS(e){return{claude:"✳ Claude",codex:"⌘ Codex",chatgpt:"◎ ChatGPT",pi:"π Pi",hermes:"☤ Hermes",openclaw:"⌁ OpenClaw",cursor:"◫ Cursor"}[e]||e}'
 LABEL_FN = "AgentDockSourceLabel"
-LABEL_FUNC = 'function AgentDockSourceLabel(e){return{claude:"✳ Claude",codex:"⌘ Codex",chatgpt:"◎ ChatGPT",gemini:"✦ Gemini","claude-web":"✳ Claude Web","grok-web":"◈ Grok Web",pi:"π Pi",omp:"π OMP",hermes:"☤ Hermes",openclaw:"⌁ OpenClaw",cursor:"◫ Cursor"}[e]||e}'
-OLD_GENERATED_LABEL_FUNC = 'function AgentDockSourceLabel(e){return{claude:"✳ Claude",codex:"⌘ Codex",chatgpt:"◎ ChatGPT",gemini:"✦ Gemini",pi:"π Pi",omp:"π OMP",hermes:"☤ Hermes",openclaw:"⌁ OpenClaw",cursor:"◫ Cursor"}[e]||e}'
+LABEL_FUNC = 'function AgentDockSourceLabel(e){return{claude:"✳ Claude",codex:"⌘ Codex",chatgpt:"◎ ChatGPT",gemini:"✦ Gemini","claude-web":"✳ Claude Web","grok-web":"◈ Grok Web","muse-web":"◈ Muse Web",executor:"⌘ Executor",pi:"π Pi",omp:"π OMP",hermes:"☤ Hermes",openclaw:"⌁ OpenClaw",cursor:"◫ Cursor"}[e]||e}'
+OLD_GENERATED_LABEL_FUNC = 'function AgentDockSourceLabel(e){return{claude:"✳ Claude",codex:"⌘ Codex",chatgpt:"◎ ChatGPT",gemini:"✦ Gemini","claude-web":"✳ Claude Web","grok-web":"◈ Grok Web",pi:"π Pi",omp:"π OMP",hermes:"☤ Hermes",openclaw:"⌁ OpenClaw",cursor:"◫ Cursor"}[e]||e}'
 
 OLD_OPT = 'p.map(m=>S.default.createElement("option",{key:m,value:m},m))'
 SOURCE_OPT_RE = re.compile(
@@ -50,6 +52,8 @@ CSS = '''    /* AgentDock platform identities BEGIN */
     .source-gemini,
     .source-claude-web,
     .source-grok-web,
+    .source-muse-web,
+    .source-executor,
     .source-pi,
     .source-omp,
     .source-hermes,
@@ -61,6 +65,8 @@ CSS = '''    /* AgentDock platform identities BEGIN */
     .source-gemini { background: rgba(66, 133, 244, 0.12); color: #2563eb; border-color: rgba(66, 133, 244, 0.26); }
     .source-claude-web { background: rgba(217, 119, 87, 0.12); color: #aa573c; border-color: rgba(217, 119, 87, 0.28); }
     .source-grok-web { background: rgba(100, 116, 139, 0.12); color: #475569; border-color: rgba(100, 116, 139, 0.28); }
+    .source-muse-web { background: rgba(100, 116, 139, 0.10); color: #475569; border-color: rgba(100, 116, 139, 0.24); }
+    .source-executor { background: rgba(14, 116, 144, 0.10); color: #0e7490; border-color: rgba(14, 116, 144, 0.24); }
     .source-pi { background: rgba(124, 58, 237, 0.12); color: #6d28d9; border-color: rgba(124, 58, 237, 0.26); }
     .source-omp { background: rgba(99, 102, 241, 0.12); color: #4f46e5; border-color: rgba(99, 102, 241, 0.26); }
     .source-hermes { background: rgba(202, 138, 4, 0.12); color: #9a6700; border-color: rgba(202, 138, 4, 0.28); }
@@ -69,6 +75,8 @@ CSS = '''    /* AgentDock platform identities BEGIN */
     [data-theme="dark"] .source-gemini { color: #93c5fd; border-color: rgba(147, 197, 253, 0.24); }
     [data-theme="dark"] .source-claude-web { color: #f1b39f; border-color: rgba(241, 179, 159, 0.27); }
     [data-theme="dark"] .source-grok-web { color: #cbd5e1; border-color: rgba(203, 213, 225, 0.27); }
+    [data-theme="dark"] .source-muse-web { color: #cbd5e1; border-color: rgba(203, 213, 225, 0.24); }
+    [data-theme="dark"] .source-executor { color: #67e8f9; border-color: rgba(103, 232, 249, 0.24); }
     [data-theme="dark"] .source-pi { color: #c4b5fd; border-color: rgba(196, 181, 253, 0.24); }
     [data-theme="dark"] .source-omp { color: #a5b4fc; border-color: rgba(165, 180, 252, 0.24); }
     [data-theme="dark"] .source-hermes { color: #fcd34d; border-color: rgba(252, 211, 77, 0.24); }
@@ -106,8 +114,8 @@ def patch_bundle(p: Path):
     if OLD_GENERATED_LABEL_FUNC in s:
         s = s.replace(OLD_GENERATED_LABEL_FUNC, LABEL_FUNC, 1)
         changed = True
-    old_sources = '["claude","codex","chatgpt","gemini","pi","omp","hermes","openclaw"]'
-    new_sources = '["claude","codex","chatgpt","gemini","claude-web","grok-web","pi","omp","hermes","openclaw"]'
+    old_sources = '["claude","codex","chatgpt","gemini","claude-web","grok-web","pi","omp","hermes","openclaw"]'
+    new_sources = '["claude","codex","chatgpt","gemini","claude-web","grok-web","muse-web","executor","pi","omp","hermes","openclaw"]'
     if old_sources in s:
         s = s.replace(old_sources, new_sources)
         changed = True
@@ -161,7 +169,7 @@ def patch_html(p: Path):
     if MARKER in s:
         # Replace stale overlay blocks, including pre-Gemini versions.
         block = s[s.index(MARKER):s.index('/* AgentDock platform identities END */', s.index(MARKER))]
-        if '.source-claude-web' not in block or '.source-grok-web' not in block:
+        if '.source-muse-web' not in block or '.source-executor' not in block:
             begin = s.index(MARKER)
             end_marker = '/* AgentDock platform identities END */'
             end = s.index(end_marker, begin) + len(end_marker)
@@ -199,6 +207,8 @@ def worker_custom(arg: str, norm: str, cls: str) -> str:
         'if(i==="gemini"||i==="gemini-web"||i.startsWith("gemini-"))return"gemini";'
         'if(i==="claude-web"||i.startsWith("claude-web-"))return"claude-web";'
         'if(i==="grok-web"||i.startsWith("grok-web-"))return"grok-web";'
+        'if(i==="muse-web"||i.startsWith("muse-web-"))return"muse-web";'
+        'if(i==="executor"||i.startsWith("executor-"))return"executor";'
         'if(i==="pi"||i.startsWith("pi-"))return"pi";'
         'if(i==="omp"||i==="oh-my-pi"||i.startsWith("omp-"))return"omp";'
         'if(i==="hermes"||i.startsWith("hermes-"))return"hermes";'
@@ -236,7 +246,7 @@ def patch_worker(path: Path):
     m = WORKER_CUSTOM_RE.search(s)
     if m:
         norm = m.group('norm')
-        if 'i==="claude-web"' not in m.group(0) or 'i==="grok-web"' not in m.group(0):
+        if 'i==="muse-web"' not in m.group(0) or 'i==="executor"' not in m.group(0):
             replacement = worker_custom(m.group('arg'), norm, m.group('cls'))
             s = s[:m.start()] + replacement + s[m.end():]
     else:
