@@ -207,24 +207,53 @@ def worker_custom(arg: str, norm: str, cls: str) -> str:
     )
 
 
+def preserve_web_platform_names(source: str, norm: str) -> str:
+    # Official normalizePlatformSource() maps any value containing "claude"
+    # to "claude". Preserve the explicit Web app identity before that branch.
+    marker = 'function ' + norm + '('
+    pos = source.find(marker)
+    if pos == -1:
+        raise RuntimeError('Worker normalization function not found: ' + norm)
+    end = source.find('}function ', pos)
+    if end == -1 or end > pos + 700:
+        raise RuntimeError('Worker source normalization function changed shape')
+    segment = source[pos:end]
+    if '"claude-web"' in segment and '"grok-web"' in segment:
+        return source
+    match = re.search(r'let (?P<value>[A-Za-z_$][\\w$]*)=[^;]+;return (?P=value)\\?', segment)
+    if not match:
+        raise RuntimeError('Worker normalizePlatformSource expression changed')
+    value = match.group('value')
+    before = 'return ' + value + '?'
+    after = 'return ' + value + '==="claude-web"||' + value + '==="grok-web"?' + value + ':' + value + '?'
+    segment = segment.replace(before, after, 1)
+    return source[:pos] + segment + source[end:]
+
+
 def patch_worker(path: Path):
-    s = path.read_text(encoding='utf-8')
+    before = path.read_text(encoding='utf-8')
+    s = before
     m = WORKER_CUSTOM_RE.search(s)
     if m:
-        current = m.group(0)
-        if 'i==="omp"' in current and 'i==="chatgpt"' in current and 'i==="openclaw"' in current and 'i==="gemini"' in current:
-            print('worker already patched', path)
-            return
-        replacement = worker_custom(m.group('arg'), m.group('norm'), m.group('cls'))
-        s = s[:m.start()] + replacement + s[m.end():]
+        norm = m.group('norm')
+        if 'i==="claude-web"' not in m.group(0) or 'i==="grok-web"' not in m.group(0):
+            replacement = worker_custom(m.group('arg'), norm, m.group('cls'))
+            s = s[:m.start()] + replacement + s[m.end():]
     else:
         m = WORKER_BASE_RE.search(s)
         if not m:
             raise RuntimeError(f'worker platform-source pattern changed: {path}')
-        replacement = worker_custom(m.group('arg'), m.group('norm'), m.group('cls'))
+        norm = m.group('norm')
+        replacement = worker_custom(m.group('arg'), norm, m.group('cls'))
         s = s[:m.start()] + replacement + s[m.end():]
-    path.write_text(s, encoding='utf-8')
-    print('patched worker', path)
+    s = preserve_web_platform_names(s, norm)
+    if s != before:
+        path.write_text(s, encoding='utf-8')
+        print('patched worker', path)
+    else:
+        print('worker already patched', path)
+
+
 # AgentDock platform source fallback END
 
 
