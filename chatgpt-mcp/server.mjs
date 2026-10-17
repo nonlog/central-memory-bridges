@@ -4,6 +4,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
 import express from 'express';
 import * as z from 'zod/v4';
+import { resolveClientPlatform } from './client-platform.mjs';
 
 const PORT = Number(process.env.PORT || 18790);
 const HOST = process.env.HOST || '127.0.0.1';
@@ -173,30 +174,30 @@ async function waitForObservation(project, sessionId, timeoutMs = 15000) {
   }
   return [];
 }
-async function writeTurn({ userMessage, assistantMessage, project = DEFAULT_PROJECT, sessionId }) {
+async function writeTurn({ userMessage, assistantMessage, project = DEFAULT_PROJECT, sessionId, platform = 'chatgpt' }) {
   const p = safeProject(project);
-  const sid = `chatgpt-${safeProject(sessionId || crypto.randomUUID(), crypto.randomUUID())}`;
+  const sid = `${platform}-${safeProject(sessionId || crypto.randomUUID(), crypto.randomUUID())}`;
   const user = redactSecrets(userMessage).slice(0, 16000);
   const assistant = redactSecrets(assistantMessage).slice(0, 24000);
   if (!user.trim() && !assistant.trim()) throw new Error('nothing to store');
   await worker('/api/sessions/init', {
-    method: 'POST', body: JSON.stringify({ contentSessionId: sid, project: p, platformSource: 'chatgpt', prompt: user || '[memory capture]' }),
+    method: 'POST', body: JSON.stringify({ contentSessionId: sid, project: p, platformSource: platform, prompt: user || '[memory capture]' }),
   }, 8000);
   if (assistant.trim()) {
     await worker('/api/sessions/observations', {
       method: 'POST',
       body: JSON.stringify({
         contentSessionId: sid,
-        platformSource: 'chatgpt',
+        platformSource: platform,
         tool_name: 'assistant_message',
-        tool_input: { source: 'chatgpt-web' },
+        tool_input: { source: platform === 'gemini' ? 'gemini-web' : 'chatgpt-web' },
         tool_response: assistant.slice(0, 1000),
-        cwd: 'chatgpt-web',
+        cwd: platform === 'gemini' ? 'gemini-web' : 'chatgpt-web',
       }),
     }, 15000);
   }
   await worker('/api/sessions/summarize', {
-    method: 'POST', body: JSON.stringify({ contentSessionId: sid, platformSource: 'chatgpt', last_assistant_message: assistant.slice(0, 4000) }),
+    method: 'POST', body: JSON.stringify({ contentSessionId: sid, platformSource: platform, last_assistant_message: assistant.slice(0, 4000) }),
   }, 45000);
   const observationIds = assistant.trim() ? await waitForObservation(p, sid) : [];
   return {
@@ -213,13 +214,15 @@ function requireToolScope(scopes, requiredScope) {
   if (!scopes.has(requiredScope)) throw new Error(`${requiredScope} scope required`);
 }
 
-function makeServer(scopes = []) {
+function makeServer(scopes = [], platform = 'chatgpt') {
   const grantedScopes = new Set(scopes);
+  const defaultProject = platform === 'gemini' ? 'gemini-web' : DEFAULT_PROJECT;
+  const defaultContextProjects = platform === 'gemini' ? ['gemini', 'gemini-web'] : DEFAULT_CONTEXT_PROJECTS;
   const server = new McpServer(
     { name: 'central-claude-mem', version: '1.0.0' },
     {
       instructions: [
-        'This app is the shared long-term memory for ChatGPT, Claude Code, Codex, OpenClaw, Hermes, and Pi.',
+        'This app is the shared long-term memory for ChatGPT, Gemini, Claude Code, Codex, OpenClaw, Hermes, and Pi.',
         'For substantive turns where prior decisions, preferences, deployments, or ongoing work may matter, call memory_context or memory_search before answering.',
         'For each substantive turn worth retaining, before sending the final response call memory_capture once with the current user message and the final response you intend to send, then send that same response to the user.',
         'Use memory_remember for explicit durable facts or decisions. Do not store passwords, API keys, tokens, private keys, or other secrets.',
@@ -280,20 +283,20 @@ function makeServer(scopes = []) {
   });
 
   server.registerTool('memory_context', {
-    title: 'Recall ChatGPT context',
-    description: 'Retrieve the central memory context for ChatGPT. In a Workspace Agent, call this near the start of every substantive user turn before answering, so relevant cross-session memory can be used consistently.',
+    title: 'Recall current web-client context',
+    description: 'Retrieve central memory context for the currently connected web client. Call near the start of substantive turns when prior context matters.',
     inputSchema: { projects: z.array(z.string().min(1).max(96)).min(1).max(8).optional() },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async ({ projects }) => {
-    const selected = (projects?.length ? projects : DEFAULT_CONTEXT_PROJECTS).map((p) => safeProject(p));
+    const selected = (projects?.length ? projects : defaultContextProjects).map((p) => safeProject(p));
     const q = new URLSearchParams({ projects: selected.join(',') });
     const raw = await worker(`/api/context/inject?${q.toString()}`, {}, 10000);
     return { content: [{ type: 'text', text: stripUnsupportedWorkStateContext(extractWorkerText(raw)).slice(0, 16000) }] };
   });
 
   server.registerTool('memory_capture', {
-    title: 'Capture completed ChatGPT turn',
-    description: 'Write a completed user/assistant turn to the shared central claude-mem pool. In a Workspace Agent, call this once at the end of every substantive response, after composing the answer, so ChatGPT contributes durable cross-session memory like Claude Code/Codex. Common secrets are redacted before storage.',
+    title: 'Capture completed web-client turn',
+    description: 'Write a completed user/assistant turn to the shared central claude-mem pool with the correct web-client source. Call once per substantive turn when appropriate. Common secrets are redacted before storage.',
     inputSchema: {
       user_message: z.string().max(16000),
       assistant_message: z.string().max(24000),
@@ -301,9 +304,9 @@ function makeServer(scopes = []) {
       session_id: z.string().max(128).optional(),
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-  }, async ({ user_message, assistant_message, project = DEFAULT_PROJECT, session_id }) => {
+  }, async ({ user_message, assistant_message, project = defaultProject, session_id }) => {
     requireToolScope(grantedScopes, 'memory:write');
-    const result = await writeTurn({ userMessage: user_message, assistantMessage: assistant_message, project, sessionId: session_id });
+    const result = await writeTurn({ userMessage: user_message, assistantMessage: assistant_message, project, sessionId: session_id, platform });
     return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
   });
 
@@ -312,9 +315,9 @@ function makeServer(scopes = []) {
     description: 'Explicitly store a durable fact, decision, preference, or work result in central claude-mem. Do not send passwords, API keys, tokens, private keys, or other secrets; common secret formats are redacted defensively.',
     inputSchema: { content: z.string().min(1).max(20000), project: z.string().max(96).optional() },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-  }, async ({ content, project = DEFAULT_PROJECT }) => {
+  }, async ({ content, project = defaultProject }) => {
     requireToolScope(grantedScopes, 'memory:write');
-    const result = await writeTurn({ userMessage: 'Remember this durable information for future sessions.', assistantMessage: content, project });
+    const result = await writeTurn({ userMessage: 'Remember this durable information for future sessions.', assistantMessage: content, project, platform });
     return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
   });
 
@@ -428,6 +431,9 @@ function requireBearer(req, res, next) {
     const scopes = new Set(String(token.scope || '').split(/\s+/));
     if (!scopes.has('memory:read')) throw new Error('memory:read scope required');
     req.centralMemoryAuth = token;
+    // Verified stateless OAuth client IDs retain the registration redirect URIs.
+    // Gemini and ChatGPT can safely share /mcp without sharing platform labels.
+    req.centralMemoryPlatform = resolveClientPlatform(token.client_id, (id) => open('cl', id));
     next();
   } catch (error) {
     res.set('WWW-Authenticate', `Bearer resource_metadata="${EXTERNAL_BASE}/.well-known/oauth-protected-resource", scope="memory:read memory:write"`);
@@ -455,7 +461,7 @@ app.get('/observation/:id', requireBearer, async (req, res) => {
 
 app.post('/mcp', requireBearer, async (req, res) => {
   const scopes = String(req.centralMemoryAuth.scope || '').split(/\s+/).filter(Boolean);
-  const server = makeServer(scopes);
+  const server = makeServer(scopes, req.centralMemoryPlatform);
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   try {
     await server.connect(transport);

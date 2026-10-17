@@ -1,0 +1,40 @@
+name: Central memory MCP bridge checks
+
+on:
+  push:
+    branches: [master, codex/gemini-mcp-source-icons]
+    paths:
+      - 'chatgpt-mcp/**'
+      - 'deploy/apply-claude-mem-viewer-branding.mjs'
+      - '.github/workflows/central-memory-mcp-checks.yml'
+  pull_request:
+    paths:
+      - 'chatgpt-mcp/**'
+      - 'deploy/apply-claude-mem-viewer-branding.mjs'
+      - '.github/workflows/central-memory-mcp-checks.yml'
+
+jobs:
+  bridge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate syntax and platform identity tests
+        run: |
+          node --check chatgpt-mcp/client-platform.mjs
+          node --check chatgpt-mcp/server.mjs
+          node --check deploy/apply-claude-mem-viewer-branding.mjs
+          node --test chatgpt-mcp/client-platform.test.mjs
+      - name: Verify viewer overlay can be reapplied
+        run: |
+          temp=$(mktemp -d)
+          mkdir -p "$temp/ui"
+          printf '<html><style>    .card-title { color: #111 }</style></html>' > "$temp/ui/viewer.html"
+          node deploy/apply-claude-mem-viewer-branding.mjs --root "$temp"
+          node deploy/apply-claude-mem-viewer-branding.mjs --root "$temp" --check
+          node deploy/apply-claude-mem-viewer-branding.mjs --root "$temp"
+          node deploy/apply-claude-mem-viewer-branding.mjs --root "$temp" --check
+          grep -q 'source-gemini' "$temp/ui/viewer.html"
+          rm -rf "$temp"

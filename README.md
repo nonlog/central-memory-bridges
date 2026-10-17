@@ -14,13 +14,14 @@ Integration source for connecting multiple AI clients to one central `claude-mem
 
 ## Production model
 
-One central `claude-mem` Worker remains the source of truth. Client adapters call its HTTP API; they must never start a fallback Worker or create a second active database.
+One central `claude-mem` Worker remains the source of truth. Client adapters call its HTTP API; they must never start a fallback Worker or create a second active database. ChatGPT Web and Gemini Web share the existing `/chatgpt-mcp/mcp` URL; OAuth client redirect origins distinguish their writes.
 
 Typical project scopes:
 
 - Hermes: `hermes`, `hermes-<profile>`
 - Pi: `pi`, `pi-<cwd basename>`
 - ChatGPT Web: `chatgpt`, `chatgpt-web`
+- Gemini Web: `gemini`, `gemini-web`
 
 Claude Code, Codex, and OpenClaw continue to use their official `claude-mem` integrations for recall/capture/search. This repository adds only a narrow optional deletion layer beside them; it does not patch or fork the official integrations.
 
@@ -68,7 +69,7 @@ See [`docs/MEMORY_ADMIN.md`](docs/MEMORY_ADMIN.md) for Claude Code, Codex, and O
 
 ## claude-mem Viewer platform branding
 
-The Viewer branding overlay keeps the upstream card/data model intact and decorates existing `platform_source` badges for ChatGPT, Codex, Claude, Pi, Hermes, OpenClaw, and legacy OMP records. It supports source templates, installed/marketplace Viewer HTML, and versioned cache Viewer HTML.
+The Viewer branding overlay keeps the upstream card/data model intact and decorates existing `platform_source` badges for ChatGPT, Gemini, Codex, Claude, Pi, Hermes, OpenClaw, and legacy OMP records. It supports source templates, installed/marketplace Viewer HTML, and versioned cache Viewer HTML.
 
 Apply it from this repository with:
 

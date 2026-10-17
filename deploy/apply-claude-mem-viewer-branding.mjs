@@ -38,6 +38,9 @@ const CSS = `
     .source-chatgpt,
     .source-chatgpt-web,
     .source-ChatGPT,
+    .source-gemini,
+    .source-gemini-web,
+    .source-Gemini,
     .source-codex,
     .source-codex-cli,
     .source-Codex,
@@ -58,6 +61,13 @@ const CSS = `
     .source-chatgpt-web::after,
     .source-ChatGPT::after {
       content: 'ChatGPT';
+      font-size: 10px;
+    }
+
+    .source-gemini::after,
+    .source-gemini-web::after,
+    .source-Gemini::after {
+      content: 'Gemini';
       font-size: 10px;
     }
 
@@ -104,6 +114,17 @@ const CSS = `
     .source-chatgpt-web::before,
     .source-ChatGPT::before {
       background-image: url('https://commons.wikimedia.org/wiki/Special:Redirect/file/OpenAI_logo_2025_(symbol).svg');
+    }
+
+    /* Gemini: Google's multi-color sparkle mark, with local cached SVG preferred. */
+    .source-gemini::before,
+    .source-gemini-web::before,
+    .source-Gemini::before {
+      background-image:
+        url('gemini-icon.svg'),
+        url('https://commons.wikimedia.org/wiki/Special:Redirect/file/Google_Gemini_icon_2025.svg');
+      background-size: contain, contain;
+      background-position: center, center;
     }
 
     /*
@@ -176,6 +197,14 @@ const CSS = `
       border-color: rgba(16, 163, 127, 0.24);
     }
 
+    .source-gemini,
+    .source-gemini-web,
+    .source-Gemini {
+      background: rgba(66, 133, 244, 0.10);
+      color: #2563eb;
+      border-color: rgba(66, 133, 244, 0.24);
+    }
+
     .source-pi,
     .source-Pi {
       background: rgba(124, 58, 237, 0.10);
@@ -203,6 +232,13 @@ const CSS = `
     [data-theme='dark'] .source-ChatGPT {
       color: #72ddbf;
       border-color: rgba(114, 221, 191, 0.22);
+    }
+
+    [data-theme='dark'] .source-gemini,
+    [data-theme='dark'] .source-gemini-web,
+    [data-theme='dark'] .source-Gemini {
+      color: #93c5fd;
+      border-color: rgba(147, 197, 253, 0.24);
     }
 
     [data-theme='dark'] .source-pi,
