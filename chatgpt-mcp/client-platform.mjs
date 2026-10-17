@@ -20,6 +20,8 @@ export function resolveClientPlatform(clientId, decodeRegisteredClient) {
     const rules = [
       { platform: 'claude-web', hosts: ['claude.ai', 'claude.com'], callback: '/api/mcp/auth_callback' },
       { platform: 'grok-web', hosts: ['grok.com', 'www.grok.com'], callback: '/connectors-oauth-exchange-code' },
+      { platform: 'muse-web', hosts: ['agent.meta.ai'], callback: '/api/hatch/oauth/callback' },
+      { platform: 'executor', hosts: ['executor.414222.xyz'], callback: '/api/oauth/callback' },
     ];
     for (const rule of rules) {
       if (redirects.every((uri) => {

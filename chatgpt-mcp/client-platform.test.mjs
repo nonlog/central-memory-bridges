@@ -34,3 +34,14 @@ test('Claude Web and Grok Web OAuth callbacks are distinct from code clients', (
   assert.equal(classified(['https://grok.com/other']), 'chatgpt');
   assert.equal(classified(['https://claude.ai/api/mcp/auth_callback', 'https://other.invalid/']), 'chatgpt');
 });
+
+
+test('Executor and Muse Web use their actual registered redirect hosts', () => {
+  assert.equal(classified(['https://executor.414222.xyz/api/oauth/callback']), 'executor');
+  assert.equal(classified(['https://agent.meta.ai/api/hatch/oauth/callback']), 'muse-web');
+  assert.equal(classified(['https://executor.414222.xyz.evil.invalid/api/oauth/callback']), 'chatgpt');
+  assert.equal(classified(['https://agent.meta.ai.evil.invalid/api/hatch/oauth/callback']), 'chatgpt');
+  assert.equal(classified(['https://agent.meta.ai/other']), 'chatgpt');
+  assert.equal(classified(['https://executor.414222.xyz/api/oauth/callback','https://untrusted.invalid/cb']), 'chatgpt');
+  assert.equal(classified(['http://executor.414222.xyz/api/oauth/callback']), 'chatgpt');
+});

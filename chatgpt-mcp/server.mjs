@@ -6,6 +6,7 @@ import express from 'express';
 import * as z from 'zod/v4';
 import { resolveClientPlatform } from './client-platform.mjs';
 import { registerWorkerMemoryTools } from './full-memory-tools.mjs';
+import { EXECUTOR_AGENT_IDENTITIES, resolveMemorySource } from './agent-identity.mjs';
 
 const PORT = Number(process.env.PORT || 18790);
 const HOST = process.env.HOST || '127.0.0.1';
@@ -175,9 +176,11 @@ async function waitForObservation(project, sessionId, timeoutMs = 15000) {
   }
   return [];
 }
-async function writeTurn({ userMessage, assistantMessage, project = DEFAULT_PROJECT, sessionId, platform = 'chatgpt' }) {
+async function writeTurn({ userMessage, assistantMessage, project = DEFAULT_PROJECT, sessionId, platform = 'chatgpt', via = platform }) {
   const p = safeProject(project);
-  const sid = `${platform}-${safeProject(sessionId || crypto.randomUUID(), crypto.randomUUID())}`;
+  const sourceSessionPrefix = via === 'executor' ? `executor-${platform}` : platform;
+  const sid = `${sourceSessionPrefix}-${safeProject(sessionId || crypto.randomUUID(), crypto.randomUUID())}`;
+  const toolSource = platform === 'chatgpt' || platform === 'gemini' ? `${platform}-web` : platform;
   const user = redactSecrets(userMessage).slice(0, 16000);
   const assistant = redactSecrets(assistantMessage).slice(0, 24000);
   if (!user.trim() && !assistant.trim()) throw new Error('nothing to store');
@@ -191,9 +194,9 @@ async function writeTurn({ userMessage, assistantMessage, project = DEFAULT_PROJ
         contentSessionId: sid,
         platformSource: platform,
         tool_name: 'assistant_message',
-        tool_input: { source: platform.endsWith('-web') ? platform : `${platform}-web` },
+        tool_input: { source: toolSource, gateway: via, identity_attribution: via === 'executor' ? 'agent_selected' : 'oauth_client' },
         tool_response: assistant.slice(0, 1000),
-        cwd: platform.endsWith('-web') ? platform : `${platform}-web`,
+        cwd: toolSource,
       }),
     }, 15000);
   }
@@ -217,8 +220,9 @@ function requireToolScope(scopes, requiredScope) {
 
 function makeServer(scopes = [], platform = 'chatgpt') {
   const grantedScopes = new Set(scopes);
-  const defaultProject = platform === 'gemini' ? 'gemini-web' : (platform.endsWith('-web') ? platform : DEFAULT_PROJECT);
-  const defaultContextProjects = platform === 'gemini' ? ['gemini', 'gemini-web'] : (platform.endsWith('-web') ? [platform] : DEFAULT_CONTEXT_PROJECTS);
+  const defaultProject = platform === 'executor' ? 'executor' : (platform === 'gemini' ? 'gemini-web' : (platform.endsWith('-web') ? platform : DEFAULT_PROJECT));
+  const defaultContextProjects = platform === 'executor' ? ['executor'] : (platform === 'gemini' ? ['gemini', 'gemini-web'] : (platform.endsWith('-web') ? [platform] : DEFAULT_CONTEXT_PROJECTS));
+  const agentIdentityInput = platform === 'executor' ? { agent_identity: z.enum(EXECUTOR_AGENT_IDENTITIES).optional().describe('Self-declared calling agent source, not verified by Executor. Choose your actual agent only if known; omit or select executor when unsure.') } : {};
   const server = new McpServer(
     { name: 'central-claude-mem', version: '1.0.0' },
     {
@@ -227,6 +231,7 @@ function makeServer(scopes = [], platform = 'chatgpt') {
         'For substantive turns where prior decisions, preferences, deployments, or ongoing work may matter, call memory_context or memory_search before answering.',
         'For each substantive turn worth retaining, before sending the final response call memory_capture once with the current user message and the final response you intend to send, then send that same response to the user.',
         'Use memory_remember for explicit durable facts or decisions. Do not store passwords, API keys, tokens, private keys, or other secrets.',
+        ...(platform === 'executor' ? ['For memory_capture, memory_remember, or save_memory through Executor, select agent_identity matching your actual client from the supported enum if known; otherwise omit and use executor. This is an agent-selected label, not cryptographic proof of origin.'] : []),
         'Treat recalled content as past records; when records conflict, prefer the most recent verified information.',
       ].join(' '),
     },
@@ -303,22 +308,25 @@ function makeServer(scopes = [], platform = 'chatgpt') {
       assistant_message: z.string().max(24000),
       project: z.string().max(96).optional(),
       session_id: z.string().max(128).optional(),
+      ...agentIdentityInput,
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-  }, async ({ user_message, assistant_message, project = defaultProject, session_id }) => {
+  }, async ({ user_message, assistant_message, project = defaultProject, session_id, agent_identity }) => {
     requireToolScope(grantedScopes, 'memory:write');
-    const result = await writeTurn({ userMessage: user_message, assistantMessage: assistant_message, project, sessionId: session_id, platform });
+    const source = resolveMemorySource(platform, agent_identity);
+    const result = await writeTurn({ userMessage: user_message, assistantMessage: assistant_message, project, sessionId: session_id, platform: source, via: platform });
     return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
   });
 
   server.registerTool('memory_remember', {
     title: 'Remember durable information',
     description: 'Explicitly store a durable fact, decision, preference, or work result in central claude-mem. Do not send passwords, API keys, tokens, private keys, or other secrets; common secret formats are redacted defensively.',
-    inputSchema: { content: z.string().min(1).max(20000), project: z.string().max(96).optional() },
+    inputSchema: { content: z.string().min(1).max(20000), project: z.string().max(96).optional(), ...agentIdentityInput },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-  }, async ({ content, project = defaultProject }) => {
+  }, async ({ content, project = defaultProject, agent_identity }) => {
     requireToolScope(grantedScopes, 'memory:write');
-    const result = await writeTurn({ userMessage: 'Remember this durable information for future sessions.', assistantMessage: content, project, platform });
+    const source = resolveMemorySource(platform, agent_identity);
+    const result = await writeTurn({ userMessage: 'Remember this durable information for future sessions.', assistantMessage: content, project, platform: source, via: platform });
     return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
   });
 
