@@ -24,6 +24,8 @@ Typical project scopes:
 - Gemini Web: `gemini`, `gemini-web`
 - Claude Web: `claude-web` (distinct from Claude Code)
 - Grok Web: `grok-web`
+- Muse Web: `muse-web`
+- Executor (default when Agent is not selected): `executor`
 
 Claude Code, Codex, and OpenClaw continue to use their official `claude-mem` integrations for recall/capture/search. This repository adds only a narrow optional deletion layer beside them; it does not patch or fork the official integrations.
 
@@ -86,9 +88,19 @@ See [`docs/CLAUDE_MEM_VIEWER_BRANDING.md`](docs/CLAUDE_MEM_VIEWER_BRANDING.md) f
 
 ## Web MCP memory capability matrix
 
-All four web clients can use the same `https://claude-mem.414222.xyz/chatgpt-mcp/mcp` Streamable HTTP endpoint and central Worker. OAuth client registration/callback determines platform_source. The original seven tools remain unchanged. Web MCP additionally exposes progressive search, durable manual notes, advanced search filters, timelines, observation/tool-use batches, exact record/list/project/stats retrieval, Work State read/write (stable virtual project cwd), TeamBrain query/brief, full session-start context, and Worker-supported deletion. Server-runtime-only `/v1/*` and filesystem/host admin capabilities are not routed to the central Worker.
+ChatGPT Web, Gemini Web, Claude Web, Grok Web, Muse Web, and Executor can share the same `https://claude-mem.414222.xyz/chatgpt-mcp/mcp` Streamable HTTP endpoint and central Worker. OAuth client registration/callback determines platform_source. The original seven tools remain unchanged. Web MCP additionally exposes progressive search, durable manual notes, advanced search filters, timelines, observation/tool-use batches, exact record/list/project/stats retrieval, Work State read/write (stable virtual project cwd), TeamBrain query/brief, full session-start context, and Worker-supported deletion. Server-runtime-only `/v1/*` and filesystem/host admin capabilities are not routed to the central Worker.
 
 Deletion tools `claude_mem_forget` and `memory_delete_session` require the separately requested OAuth `memory:delete` scope and explicit exact IDs with `confirm: true`. Existing grants remain read/write; reconnect and authorize that scope before using deletion. The Worker handles sync-safe deletion; no SQL or arbitrary Worker endpoint is exposed. The `memory_admin_permissions` tool reports the granted scopes. Some Web providers may not offer a scope selection UI; in that case deletion remains unavailable until the OAuth client requests the new scope.
+
+### Executor agent-selected identity
+
+The existing `claude_mem.user.sharedCentralMemory` connection is classified as `executor` based on its registered OAuth redirect URI (`executor.414222.xyz/api/oauth/callback`). It defaults to project `executor`, and memory writes without an explicit source use the `executor` Viewer icon. No fork or modification of Executor is necessary.
+
+When connected through Executor, `memory_capture`, `memory_remember` and `save_memory` expose an optional enumerated `agent_identity` argument. Supported choices: `executor`, `claude` (Claude Code), `codex`, `chatgpt`, `gemini`, `claude-web`, `grok-web`, `muse-web`, `pi`, `omp`, `hermes`, `openclaw`. The Agent selects its own identity if known; if unsure, leave the field empty to use `executor`. Non-Executor OAuth clients cannot override the source. The selected source drives `platformSource` / Viewer icon, while the observation tool input or manual-memory metadata records that Executor was the transport.
+
+**Important:** this is a self-declared Agent label. The existing Executor build does not cryptographically verify or forward the calling Agent's identity; do not treat `agent_identity` as an access-control claim. Actual authorization continues to use the existing OAuth scopes; delete tools retain separate `memory:delete` and Executor approval policies.
+
+Muse Web maps its registered OAuth callback (`agent.meta.ai/api/hatch/oauth/callback`) to `muse-web`. The Viewer uses the official Muse SVG; Executor uses the official executor.sh favicon. Both are cached alongside the Viewer with the publisher URL as fallback.
 
 ## Security
 
