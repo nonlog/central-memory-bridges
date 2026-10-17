@@ -4,6 +4,32 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 
+const GEMINI_ICON_URL = 'https://commons.wikimedia.org/wiki/Special:Redirect/file/Google_Gemini_icon_2025.svg';
+const GEMINI_ICON_NAME = 'gemini-icon.svg';
+let geminiIconSource;
+
+async function cacheGeminiIcon(htmlFile) {
+  const target = path.join(path.dirname(htmlFile), GEMINI_ICON_NAME);
+  if (fs.existsSync(target) || process.env.CLAUDE_MEM_BRANDING_NO_ICON_DOWNLOAD === '1') return;
+  if (geminiIconSource === undefined) {
+    try {
+      const response = await fetch(GEMINI_ICON_URL, { signal: AbortSignal.timeout(8000) });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      const svg = await response.text();
+      if (svg.length < 100 || svg.length > 100000 || !/^<svg[\s>]/.test(svg.trim()) || /<script\b/i.test(svg)) {
+        throw new Error('Unexpected SVG asset');
+      }
+      geminiIconSource = svg;
+    } catch (error) {
+      geminiIconSource = '';
+      console.warn('Gemini icon download unavailable; Viewer can use the remote-image fallback:', error.message);
+    }
+  }
+  if (!geminiIconSource) return;
+  fs.writeFileSync(target, geminiIconSource, 'utf8');
+  console.log('CACHED ' + target);
+}
+
 const START = '/* central-memory-bridges: platform-source-icons:start */';
 const END = '/* central-memory-bridges: platform-source-icons:end */';
 
@@ -403,6 +429,7 @@ if (check) {
 }
 
 for (const { relativePath, filePath } of files) {
+  await cacheGeminiIcon(filePath);
   const before = fs.readFileSync(filePath, 'utf8');
   const after = patchHtml(before);
   if (after === before) {
