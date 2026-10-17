@@ -302,7 +302,7 @@ function makeServer(scopes = [], platform = 'chatgpt') {
 
   server.registerTool('memory_capture', {
     title: 'Capture completed web-client turn',
-    description: 'Write a completed user/assistant turn to the shared central claude-mem pool with the correct web-client source. Call once per substantive turn when appropriate. Common secrets are redacted before storage.',
+    description: 'Write a completed user/assistant turn to central claude-mem. Common secrets are redacted. Call once per substantive turn when appropriate.' + (platform === 'executor' ? ' Select agent_identity from the supported choices when you know which Agent you are; omit when unsure to use executor. This label is self-declared, not verified.' : ''),
     inputSchema: {
       user_message: z.string().max(16000),
       assistant_message: z.string().max(24000),
@@ -320,7 +320,7 @@ function makeServer(scopes = [], platform = 'chatgpt') {
 
   server.registerTool('memory_remember', {
     title: 'Remember durable information',
-    description: 'Explicitly store a durable fact, decision, preference, or work result in central claude-mem. Do not send passwords, API keys, tokens, private keys, or other secrets; common secret formats are redacted defensively.',
+    description: 'Explicitly store a durable fact, decision, preference, or work result in central claude-mem. Do not send secrets.' + (platform === 'executor' ? ' Select agent_identity matching your actual Agent when known (Codex, Claude, Pi, etc.); omit for generic executor. The selected source is not an authenticated Agent identity.' : ''),
     inputSchema: { content: z.string().min(1).max(20000), project: z.string().max(96).optional(), ...agentIdentityInput },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   }, async ({ content, project = defaultProject, agent_identity }) => {
