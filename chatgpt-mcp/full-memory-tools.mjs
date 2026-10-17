@@ -1,4 +1,5 @@
 import * as z from 'zod/v4';
+import { EXECUTOR_AGENT_IDENTITIES, resolveMemorySource } from './agent-identity.mjs';
 
 // Worker-runtime memory API only. Server-only /v1 endpoints, filesystem search,
 // host administration, and arbitrary Worker proxying are intentionally excluded.
@@ -12,6 +13,7 @@ const recordItem = z.object({ type: recordKind, id: positiveId });
 
 export function registerWorkerMemoryTools(server, { worker, platform, defaultProject, safeProject, redactSecrets, scopes }) {
   const granted = new Set(scopes);
+  const agentIdentityInput = platform === 'executor' ? { agent_identity: z.enum(EXECUTOR_AGENT_IDENTITIES).optional().describe('Self-declared actual calling Agent; omit to use executor. This is not independently verified.') } : {};
   const requireScope = (scope) => {
     if (!granted.has(scope)) throw new Error(scope + ' OAuth scope required; reconnect the MCP connector and authorize this permission.');
   };
@@ -54,17 +56,19 @@ export function registerWorkerMemoryTools(server, { worker, platform, defaultPro
 
   server.registerTool('save_memory', {
     title: 'Save a durable memory directly',
-    description: 'Official worker-mode manual observation save without AI summarization. Records the authenticated web platform as the source.',
+    description: 'Official Worker-mode manual memory save. Executor callers may select agent_identity from the supported source list; omit when unsure. The selected Agent identity is self-declared, not verified.',
     inputSchema: {
       text: z.string().min(1).max(20_000),
       title: z.string().max(500).optional(),
       project: projectName.optional(),
       metadata: z.record(z.string(), z.unknown()).optional(),
+      ...agentIdentityInput,
     },
     annotations: writeOnly,
-  }, async ({ text, title, project, metadata }) => {
+  }, async ({ text, title, project, metadata, agent_identity }) => {
     requireScope('memory:write');
-    const cleanMetadata = { ...(metadata || {}), platformSource: platform, source: platform };
+    const source = resolveMemorySource(platform, agent_identity);
+    const cleanMetadata = { ...(metadata || {}), platformSource: source, source, ...(platform === 'executor' ? { via: 'executor', identityAttribution: 'agent_selected' } : {}) };
     delete cleanMetadata.sourceFingerprint; // untrusted deduplication tokens must not hide an intended write
     return response(await post('/api/memory/save', {
       text: redactSecrets(text), title: title ? redactSecrets(title) : undefined,
@@ -212,6 +216,7 @@ export function registerWorkerMemoryTools(server, { worker, platform, defaultPro
     inputSchema: {}, annotations: readOnly,
   }, async () => response({
     platform, project: defaultProject, scopes: [...granted],
+    ...(platform === 'executor' ? { agent_identity_options: [...EXECUTOR_AGENT_IDENTITIES], identity_attribution: 'agent_selected_not_verified' } : {}),
     can_delete: granted.has('memory:delete'),
     deletion_note: granted.has('memory:delete')
       ? 'Delete exact IDs only, after explicit user authorization.'

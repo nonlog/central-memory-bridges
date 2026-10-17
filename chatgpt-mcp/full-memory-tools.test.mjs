@@ -67,3 +67,29 @@ test('deletion uses exact sync-aware Worker paths and deduplicates records', asy
   await h.call('memory_delete_session',{platformSource:'grok-web',contentSessionId:'grok-web-abc',confirm:true});
   assert.equal(h.calls[3].path,'/api/sessions/grok-web/grok-web-abc');
 });
+
+test('Executor save_memory declares a constrained agent identity enum and labels selected source', async () => {
+  const h = harness(['memory:read','memory:write'],'executor');
+  const tool = h.tools.get('save_memory');
+  assert.ok(tool.meta.inputSchema.agent_identity);
+  const p = tool.meta.inputSchema.agent_identity.safeParse('codex');
+  assert.equal(p.success, true);
+  assert.equal(tool.meta.inputSchema.agent_identity.safeParse('unlisted-client').success, false);
+  await h.call('save_memory', {text:'a decision', agent_identity:'codex',metadata:{platformSource:'spoof',source:'spoof',via:'spoof'}});
+  assert.equal(h.calls[0].body.metadata.platformSource,'codex');
+  assert.equal(h.calls[0].body.metadata.source,'codex');
+  assert.equal(h.calls[0].body.metadata.via,'executor');
+  assert.equal(h.calls[0].body.metadata.identityAttribution,'agent_selected');
+  assert.equal((await h.call('memory_admin_permissions')).structuredContent.agent_identity_options.includes('codex'),true);
+  assert.equal((await h.call('memory_admin_permissions')).structuredContent.identity_attribution,'agent_selected_not_verified');
+});
+
+test('Executor save_memory defaults to Executor and non-Executor schema has no source override', async () => {
+  const exec = harness(['memory:read','memory:write'],'executor');
+  await exec.call('save_memory',{text:'ordinary message'});
+  assert.equal(exec.calls[0].body.metadata.platformSource,'executor');
+  const gemini = harness(['memory:read','memory:write'],'gemini');
+  assert.equal(gemini.tools.get('save_memory').meta.inputSchema.agent_identity,undefined);
+  await gemini.call('save_memory',{text:'web message',agent_identity:'codex'});
+  assert.equal(gemini.calls[0].body.metadata.platformSource,'gemini');
+});

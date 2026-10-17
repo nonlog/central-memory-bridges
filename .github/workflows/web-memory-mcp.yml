@@ -1,7 +1,7 @@
 name: Complete Web Memory MCP
 on:
   push:
-    branches: [master, codex/web-mcp-full-memory-claude-grok]
+    branches: [master, codex/web-mcp-full-memory-claude-grok, codex/executor-identity-muse-icons-20261017]
     paths:
       - 'chatgpt-mcp/**'
       - 'deploy/apply-claude-mem-viewer-branding.mjs'
@@ -31,9 +31,10 @@ jobs:
         run: |
           node --check chatgpt-mcp/server.mjs
           node --check chatgpt-mcp/full-memory-tools.mjs
+          node --check chatgpt-mcp/agent-identity.mjs
           node --check chatgpt-mcp/client-platform.mjs
           node --check deploy/apply-claude-mem-viewer-branding.mjs
-          node --test chatgpt-mcp/client-platform.test.mjs chatgpt-mcp/full-memory-tools.test.mjs
+          node --test chatgpt-mcp/client-platform.test.mjs chatgpt-mcp/full-memory-tools.test.mjs chatgpt-mcp/agent-identity.test.mjs
           python3 -m unittest discover -s deploy -p 'test_platform_ui_patch.py' -v
       - name: Viewer branding idempotence
         run: |
@@ -44,6 +45,8 @@ jobs:
           node deploy/apply-claude-mem-viewer-branding.mjs --root "$d" --check
           grep -q 'source-claude-web' "$d/ui/viewer.html"
           grep -q 'source-grok-web' "$d/ui/viewer.html"
+          grep -q 'source-executor' "$d/ui/viewer.html"
+          grep -q 'source-muse-web' "$d/ui/viewer.html"
           CLAUDE_MEM_BRANDING_NO_ICON_DOWNLOAD=1 node deploy/apply-claude-mem-viewer-branding.mjs --root "$d"
           node deploy/apply-claude-mem-viewer-branding.mjs --root "$d" --check
           rm -rf "$d"
