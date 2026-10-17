@@ -9,6 +9,34 @@ const GEMINI_ICON_NAME = 'gemini-icon.svg';
 let geminiIconSource;
 const GROK_ICON_URL = 'https://commons.wikimedia.org/wiki/Special:Redirect/file/Grok-icon.svg';
 let grokIconSource;
+const EXTRA_BRAND_ICONS = [
+  { file: 'executor-icon.png', url: 'https://executor.sh/favicon-32.png', kind: 'png' },
+  { file: 'muse-web-icon.svg', url: 'https://platform.muse.ai/icon.svg?icon.38rus2eykume6.svg', kind: 'svg' },
+];
+async function cacheExtraBrandIcons(htmlFile) {
+  if (process.env.CLAUDE_MEM_BRANDING_NO_ICON_DOWNLOAD === '1') return;
+  for (const { file, url, kind } of EXTRA_BRAND_ICONS) {
+    const target = path.join(path.dirname(htmlFile), file);
+    if (fs.existsSync(target)) continue;
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      const bytes = Buffer.from(await response.arrayBuffer());
+      if (bytes.length < 100 || bytes.length > 100000) throw new Error('Invalid icon size');
+      if (kind === 'png') {
+        if (!bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) throw new Error('Not a PNG');
+      } else {
+        const svg = bytes.toString('utf8').trim();
+        if (!/^<svg[\s>]/.test(svg) || /<script\b|<!entity\b/i.test(svg)) throw new Error('Invalid SVG');
+      }
+      fs.writeFileSync(target, bytes);
+      console.log('CACHED ' + target);
+    } catch (error) {
+      console.warn('Could not cache ' + file + '; Viewer will use official URL fallback:', error.message);
+    }
+  }
+}
+
 async function cacheGrokIcon(htmlFile) {
   const target = path.join(path.dirname(htmlFile), 'grok-web-icon.svg');
   if (fs.existsSync(target) || process.env.CLAUDE_MEM_BRANDING_NO_ICON_DOWNLOAD === '1') return;
@@ -98,6 +126,8 @@ const CSS = `
     .source-claude-web,
     .source-Claude,
     .source-grok-web,
+    .source-muse-web,
+    .source-executor,
     .source-pi,
     .source-Pi,
     .source-hermes,
@@ -143,6 +173,16 @@ const CSS = `
 
     .source-grok-web::after {
       content: 'Grok Web';
+      font-size: 10px;
+    }
+
+    .source-muse-web::after {
+      content: 'Muse Web';
+      font-size: 10px;
+    }
+
+    .source-executor::after {
+      content: 'Executor';
       font-size: 10px;
     }
 
@@ -229,6 +269,20 @@ const CSS = `
       background-position: center, center;
     }
 
+    /* Executor: official Executor project favicon, stored beside the Viewer. */
+    .source-executor::before {
+      background-image: url('executor-icon.png'), url('https://executor.sh/favicon-32.png');
+      background-size: contain, contain;
+      background-position: center, center;
+    }
+
+    /* Muse Web: official SVG icon from the Muse web app. */
+    .source-muse-web::before {
+      background-image: url('muse-web-icon.svg'), url('https://platform.muse.ai/icon.svg?icon.38rus2eykume6.svg');
+      background-size: contain, contain;
+      background-position: center, center;
+    }
+
     /* Pi: official project logo referenced by the Pi repository README. */
     .source-pi::before,
     .source-Pi::before {
@@ -288,6 +342,18 @@ const CSS = `
       border-color: rgba(100, 116, 139, 0.28);
     }
 
+    .source-executor {
+      background: rgba(14, 116, 144, 0.10);
+      color: #0e7490;
+      border-color: rgba(14, 116, 144, 0.24);
+    }
+
+    .source-muse-web {
+      background: rgba(100, 116, 139, 0.10);
+      color: #475569;
+      border-color: rgba(100, 116, 139, 0.24);
+    }
+
     .source-pi,
     .source-Pi {
       background: rgba(124, 58, 237, 0.10);
@@ -332,6 +398,16 @@ const CSS = `
     [data-theme='dark'] .source-grok-web {
       color: #cbd5e1;
       border-color: rgba(203, 213, 225, 0.27);
+    }
+
+    [data-theme='dark'] .source-executor {
+      color: #67e8f9;
+      border-color: rgba(103, 232, 249, 0.24);
+    }
+
+    [data-theme='dark'] .source-muse-web {
+      color: #cbd5e1;
+      border-color: rgba(203, 213, 225, 0.24);
     }
 
     [data-theme='dark'] .source-pi,
@@ -498,6 +574,7 @@ if (check) {
 for (const { relativePath, filePath } of files) {
   await cacheGeminiIcon(filePath);
   await cacheGrokIcon(filePath);
+  await cacheExtraBrandIcons(filePath);
   const before = fs.readFileSync(filePath, 'utf8');
   const after = patchHtml(before);
   if (after === before) {
