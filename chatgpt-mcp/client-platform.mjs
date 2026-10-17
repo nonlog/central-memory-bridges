@@ -16,7 +16,19 @@ export function resolveClientPlatform(clientId, decodeRegisteredClient) {
       const u = new URL(uri);
       return u.protocol === 'https:' && GEMINI_REDIRECT_HOSTS.has(u.hostname.toLowerCase());
     });
-    return isGemini ? 'gemini' : 'chatgpt';
+    if (isGemini) return 'gemini';
+    const rules = [
+      { platform: 'claude-web', hosts: ['claude.ai', 'claude.com'], callback: '/api/mcp/auth_callback' },
+      { platform: 'grok-web', hosts: ['grok.com', 'www.grok.com'], callback: '/connectors-oauth-exchange-code' },
+    ];
+    for (const rule of rules) {
+      if (redirects.every((uri) => {
+        const u = new URL(uri);
+        return u.protocol === 'https:' && rule.hosts.includes(u.hostname.toLowerCase()) &&
+          u.pathname.replace(/\/$/, '') === rule.callback;
+      })) return rule.platform;
+    }
+    return 'chatgpt';
   } catch {
     return 'chatgpt';
   }

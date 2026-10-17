@@ -24,3 +24,13 @@ test('malformed, unknown, or mixed OAuth clients cannot impersonate Gemini', () 
   assert.equal(resolveClientPlatform('', () => ({})), 'chatgpt');
   assert.equal(resolveClientPlatform('invalid', () => { throw new Error('invalid token'); }), 'chatgpt');
 });
+
+test('Claude Web and Grok Web OAuth callbacks are distinct from code clients', () => {
+  assert.equal(classified(['https://claude.ai/api/mcp/auth_callback']), 'claude-web');
+  assert.equal(classified(['https://claude.com/api/mcp/auth_callback']), 'claude-web');
+  assert.equal(classified(['https://grok.com/connectors-oauth-exchange-code/']), 'grok-web');
+  assert.equal(classified(['https://www.grok.com/connectors-oauth-exchange-code']), 'grok-web');
+  assert.equal(classified(['https://claude.ai.evil.invalid/api/mcp/auth_callback']), 'chatgpt');
+  assert.equal(classified(['https://grok.com/other']), 'chatgpt');
+  assert.equal(classified(['https://claude.ai/api/mcp/auth_callback', 'https://other.invalid/']), 'chatgpt');
+});
