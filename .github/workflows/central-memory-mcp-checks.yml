@@ -26,6 +26,7 @@ jobs:
           node --check chatgpt-mcp/client-platform.mjs
           node --check chatgpt-mcp/server.mjs
           node --check deploy/apply-claude-mem-viewer-branding.mjs
+          python3 -m py_compile deploy/reapply-claude-mem-platform-ui.py
           node --test chatgpt-mcp/client-platform.test.mjs
       - name: Verify viewer overlay can be reapplied
         run: |

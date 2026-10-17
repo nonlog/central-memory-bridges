@@ -4,11 +4,12 @@ import glob
 import re
 import sys
 
-SOURCES = ["claude", "codex", "chatgpt", "pi", "omp", "hermes", "openclaw"]
+SOURCES = ["claude", "codex", "chatgpt", "gemini", "pi", "omp", "hermes", "openclaw"]
 LABELS = {
     "claude": "✳ Claude",
     "codex": "⌘ Codex",
     "chatgpt": "◎ ChatGPT",
+    "gemini": "✦ Gemini",
     "pi": "π Pi",
     "omp": "π OMP",
     "hermes": "☤ Hermes",
@@ -29,7 +30,8 @@ BASE_REGISTRY_RE = re.compile(
 OLD_PS_LABEL = 'function PS(e){return{claude:"✳ Claude",codex:"⌘ Codex",chatgpt:"◎ ChatGPT",pi:"π Pi",omp:"π OMP",hermes:"☤ Hermes",openclaw:"⌁ OpenClaw",cursor:"◫ Cursor"}[e]||e}'
 OLD_PS_LABEL_NO_OMP = 'function PS(e){return{claude:"✳ Claude",codex:"⌘ Codex",chatgpt:"◎ ChatGPT",pi:"π Pi",hermes:"☤ Hermes",openclaw:"⌁ OpenClaw",cursor:"◫ Cursor"}[e]||e}'
 LABEL_FN = "AgentDockSourceLabel"
-LABEL_FUNC = 'function AgentDockSourceLabel(e){return{claude:"✳ Claude",codex:"⌘ Codex",chatgpt:"◎ ChatGPT",pi:"π Pi",omp:"π OMP",hermes:"☤ Hermes",openclaw:"⌁ OpenClaw",cursor:"◫ Cursor"}[e]||e}'
+LABEL_FUNC = 'function AgentDockSourceLabel(e){return{claude:"✳ Claude",codex:"⌘ Codex",chatgpt:"◎ ChatGPT",gemini:"✦ Gemini",pi:"π Pi",omp:"π OMP",hermes:"☤ Hermes",openclaw:"⌁ OpenClaw",cursor:"◫ Cursor"}[e]||e}'
+OLD_GENERATED_LABEL_FUNC = 'function AgentDockSourceLabel(e){return{claude:"✳ Claude",codex:"⌘ Codex",chatgpt:"◎ ChatGPT",pi:"π Pi",omp:"π OMP",hermes:"☤ Hermes",openclaw:"⌁ OpenClaw",cursor:"◫ Cursor"}[e]||e}'
 
 OLD_OPT = 'p.map(m=>S.default.createElement("option",{key:m,value:m},m))'
 SOURCE_OPT_RE = re.compile(
@@ -43,6 +45,7 @@ CSS = '''    /* AgentDock platform identities BEGIN */
     .source-claude,
     .source-codex,
     .source-chatgpt,
+    .source-gemini,
     .source-pi,
     .source-omp,
     .source-hermes,
@@ -51,11 +54,13 @@ CSS = '''    /* AgentDock platform identities BEGIN */
     }
 
     .source-chatgpt { background: rgba(16, 163, 127, 0.12); color: #08785d; border-color: rgba(16, 163, 127, 0.26); }
+    .source-gemini { background: rgba(66, 133, 244, 0.12); color: #2563eb; border-color: rgba(66, 133, 244, 0.26); }
     .source-pi { background: rgba(124, 58, 237, 0.12); color: #6d28d9; border-color: rgba(124, 58, 237, 0.26); }
     .source-omp { background: rgba(99, 102, 241, 0.12); color: #4f46e5; border-color: rgba(99, 102, 241, 0.26); }
     .source-hermes { background: rgba(202, 138, 4, 0.12); color: #9a6700; border-color: rgba(202, 138, 4, 0.28); }
     .source-openclaw { background: rgba(239, 68, 68, 0.12); color: #b42318; border-color: rgba(239, 68, 68, 0.26); }
     [data-theme="dark"] .source-chatgpt { color: #6ee7b7; border-color: rgba(110, 231, 183, 0.24); }
+    [data-theme="dark"] .source-gemini { color: #93c5fd; border-color: rgba(147, 197, 253, 0.24); }
     [data-theme="dark"] .source-pi { color: #c4b5fd; border-color: rgba(196, 181, 253, 0.24); }
     [data-theme="dark"] .source-omp { color: #a5b4fc; border-color: rgba(165, 180, 252, 0.24); }
     [data-theme="dark"] .source-hermes { color: #fcd34d; border-color: rgba(252, 211, 77, 0.24); }
@@ -87,6 +92,16 @@ def patch_bundle(p: Path):
         changed = True
     elif OLD_PS_LABEL_NO_OMP in s:
         s = s.replace(OLD_PS_LABEL_NO_OMP, LABEL_FUNC, 1).replace('PS(m)', f'{LABEL_FN}(m)').replace('PS(e.platform_source||"claude")', f'{LABEL_FN}(e.platform_source||"claude")')
+        changed = True
+
+    # Update bundles already patched by our older source registry overlay.
+    if OLD_GENERATED_LABEL_FUNC in s:
+        s = s.replace(OLD_GENERATED_LABEL_FUNC, LABEL_FUNC, 1)
+        changed = True
+    old_sources = '["claude","codex","chatgpt","pi","omp","hermes","openclaw"]'
+    new_sources = '["claude","codex","chatgpt","gemini","pi","omp","hermes","openclaw"]'
+    if old_sources in s:
+        s = s.replace(old_sources, new_sources)
         changed = True
 
     if LABEL_FUNC not in s:
@@ -136,8 +151,9 @@ def patch_bundle(p: Path):
 def patch_html(p: Path):
     s = p.read_text(encoding='utf-8')
     if MARKER in s:
-        # Upgrade an older overlay to include OMP without duplicating the block.
-        if '.source-omp' not in s:
+        # Replace stale overlay blocks, including pre-Gemini versions.
+        block = s[s.index(MARKER):s.index('/* AgentDock platform identities END */', s.index(MARKER))]
+        if '.source-gemini' not in block:
             begin = s.index(MARKER)
             end_marker = '/* AgentDock platform identities END */'
             end = s.index(end_marker, begin) + len(end_marker)
@@ -172,6 +188,7 @@ def worker_custom(arg: str, norm: str, cls: str) -> str:
         f'let n={arg}.body&&typeof {arg}.body=="object"?{arg}.body:{{}},s={cls}.firstString(n.project)??{cls}.firstString(n.contentSessionId);'
         'if(s){let i=s.trim().toLowerCase();'
         'if(i==="chatgpt"||i==="chatgpt-web"||i.startsWith("chatgpt-"))return"chatgpt";'
+        'if(i==="gemini"||i==="gemini-web"||i.startsWith("gemini-"))return"gemini";'
         'if(i==="pi"||i.startsWith("pi-"))return"pi";'
         'if(i==="omp"||i==="oh-my-pi"||i.startsWith("omp-"))return"omp";'
         'if(i==="hermes"||i.startsWith("hermes-"))return"hermes";'
@@ -185,7 +202,7 @@ def patch_worker(path: Path):
     m = WORKER_CUSTOM_RE.search(s)
     if m:
         current = m.group(0)
-        if 'i==="omp"' in current and 'i==="chatgpt"' in current and 'i==="openclaw"' in current:
+        if 'i==="omp"' in current and 'i==="chatgpt"' in current and 'i==="openclaw"' in current and 'i==="gemini"' in current:
             print('worker already patched', path)
             return
         replacement = worker_custom(m.group('arg'), m.group('norm'), m.group('cls'))
