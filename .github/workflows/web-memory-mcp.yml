@@ -1,0 +1,49 @@
+name: Complete Web Memory MCP
+on:
+  push:
+    branches: [master, codex/web-mcp-full-memory-claude-grok]
+    paths:
+      - 'chatgpt-mcp/**'
+      - 'deploy/apply-claude-mem-viewer-branding.mjs'
+      - 'deploy/reapply-claude-mem-platform-ui.py'
+      - 'deploy/test_platform_ui_patch.py'
+      - '.github/workflows/web-memory-mcp.yml'
+  pull_request:
+    paths:
+      - 'chatgpt-mcp/**'
+      - 'deploy/**'
+      - '.github/workflows/web-memory-mcp.yml'
+
+jobs:
+  web-memory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prepare MCP dependencies
+        run: npm ci --prefix chatgpt-mcp --no-audit --no-fund
+      - name: Syntax, complete memory tool and platform tests
+        run: |
+          node --check chatgpt-mcp/server.mjs
+          node --check chatgpt-mcp/full-memory-tools.mjs
+          node --check chatgpt-mcp/client-platform.mjs
+          node --check deploy/apply-claude-mem-viewer-branding.mjs
+          node --test chatgpt-mcp/client-platform.test.mjs chatgpt-mcp/full-memory-tools.test.mjs
+          python3 -m unittest discover -s deploy -p 'test_platform_ui_patch.py' -v
+      - name: Viewer branding idempotence
+        run: |
+          d=$(mktemp -d)
+          mkdir -p "$d/ui"
+          printf '<html><style>    .card-title { color: red; }</style></html>' > "$d/ui/viewer.html"
+          CLAUDE_MEM_BRANDING_NO_ICON_DOWNLOAD=1 node deploy/apply-claude-mem-viewer-branding.mjs --root "$d"
+          node deploy/apply-claude-mem-viewer-branding.mjs --root "$d" --check
+          grep -q 'source-claude-web' "$d/ui/viewer.html"
+          grep -q 'source-grok-web' "$d/ui/viewer.html"
+          CLAUDE_MEM_BRANDING_NO_ICON_DOWNLOAD=1 node deploy/apply-claude-mem-viewer-branding.mjs --root "$d"
+          node deploy/apply-claude-mem-viewer-branding.mjs --root "$d" --check
+          rm -rf "$d"
