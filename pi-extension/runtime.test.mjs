@@ -241,4 +241,25 @@ assert.ok(tools.has("claude_mem_remember"));
 assert.ok(tools.has("work_state_read"));
 assert.ok(tools.has("work_state_write"));
 
+// The official Worker rejects non-finite/unsafe numeric values, and the Pi
+// bridge must refuse those before issuing an HTTP write.
+const wsBefore = calls.filter((call) => call.route === "/api/work-state/entries").length;
+const invalidWs = await tools.get("work_state_write").execute(
+  "ws-invalid-number",
+  {list: "tasks", fields: {count: Number.MAX_SAFE_INTEGER + 1}},
+  undefined, undefined, ctx,
+);
+assert.match(invalidWs.content[0].text, /safe finite numeric/);
+const oversizedWs = await tools.get("work_state_write").execute(
+  "ws-too-large",
+  {list: "tasks", fields: {note: "x".repeat(2100)}},
+  undefined, undefined, ctx,
+);
+assert.match(oversizedWs.content[0].text, /2000/);
+assert.equal(
+  calls.filter((call) => call.route === "/api/work-state/entries").length,
+  wsBefore,
+  "invalid Work State requests must not reach the Worker",
+);
+
 console.log("Pi extension runtime lifecycle tests passed.");

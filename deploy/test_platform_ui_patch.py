@@ -28,8 +28,60 @@ UI = (
     '{className:BACKTICKcard-source source-DOLLARBRACEe.platform_source||"claude"}BACKTICK},e.platform_source||"claude")}'
 ).replace("BACKTICK", chr(96)).replace("DOLLARBRACE", "$" + "{")
 
+WORKER = (
+    'function norm(e){let t=typeof e==="string"?e.toLowerCase():"";'
+    'return t?t.includes("claude")?"claude":t:null}function unusedWorker(){}'
+    'class WorkerRequest {'
+    'static rawPlatformSourceFromRequest(e){return e.headers?.source||null}'
+    'static firstString(v){return typeof v==="string"?v:null}'
+    'getPlatformSourceFromRequest(e){return norm(WorkerRequest.rawPlatformSourceFromRequest(e))}'
+    '}'
+)
+
 
 class TestViewerRegistry(unittest.TestCase):
+    def test_worker_source_identity_patch_and_idempotence(self):
+        with tempfile.TemporaryDirectory() as folder:
+            file = Path(folder) / "worker-service.cjs"
+            file.write_text(WORKER, encoding="utf-8")
+            patcher.patch_worker(file)
+            patcher.verify_worker_patch(file)
+            first = file.read_text(encoding="utf-8")
+            self.assertIn('i==="muse-web"', first)
+            self.assertIn('i==="executor"', first)
+            self.assertIn('==="claude-web"', first)
+            self.assertIn('==="grok-web"', first)
+            patcher.patch_worker(file)
+            self.assertEqual(first, file.read_text(encoding="utf-8"))
+            checks = (
+                '\nconst assert=require("node:assert/strict");'
+                '\nconst source=new WorkerRequest();'
+                '\nassert.equal(source.getPlatformSourceFromRequest({headers:{source:"claude-web"}}),"claude-web");'
+                '\nassert.equal(source.getPlatformSourceFromRequest({headers:{source:"grok-web"}}),"grok-web");'
+                '\nassert.equal(source.getPlatformSourceFromRequest({body:{project:"muse-web-project"}}),"muse-web");'
+                '\nassert.equal(source.getPlatformSourceFromRequest({body:{contentSessionId:"executor-123"}}),"executor");'
+                '\nassert.equal(source.getPlatformSourceFromRequest({headers:{source:"codex"},body:{project:"grok-web"}}),"codex");'
+            )
+            proc = subprocess.run(
+                ["node", "-e", first + checks], capture_output=True, text=True, check=False
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_worker_contract_change_fails_without_mutation(self):
+        with tempfile.TemporaryDirectory() as folder:
+            file = Path(folder) / "worker-service.cjs"
+            file.write_text('function different(e){return "claude"}', encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "worker platform-source pattern changed"):
+                patcher.patch_worker(file)
+            self.assertEqual(file.read_text(encoding="utf-8"), 'function different(e){return "claude"}')
+
+    def test_unpatched_worker_fails_verification(self):
+        with tempfile.TemporaryDirectory() as folder:
+            file = Path(folder) / "worker-service.cjs"
+            file.write_text(WORKER, encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "fallback missing"):
+                patcher.verify_worker_patch(file)
+
     def test_source_registry_old_and_new_versions(self):
         for name, selector in [("legacy", OLD), ("project-filtered-13.37", NEW)]:
             with self.subTest(name=name), tempfile.TemporaryDirectory() as folder:

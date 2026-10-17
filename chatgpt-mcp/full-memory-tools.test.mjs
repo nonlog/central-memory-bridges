@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { registerWorkerMemoryTools } from './full-memory-tools.mjs';
+import { registerWorkerMemoryTools, validateWorkStateFields } from './full-memory-tools.mjs';
 
 function harness(scopes = ['memory:read', 'memory:write'], platform = 'claude-web') {
   const tools = new Map(), calls = [];
@@ -49,6 +49,28 @@ test('Grok and Claude Web work state uses virtual project path', async () => {
   await h.call('work_state_write',{project:'demo',list:'release',fields:{task:'test',status:'doing'}});
   assert.match(h.calls[0].path,/cwd=%2Fweb-mcp%2Fdemo/);
   assert.equal(h.calls[1].body.cwd, '/web-mcp/demo');
+});
+
+test('work state validation matches official v13.41 2000-character and safe-number rules', async () => {
+  const h = harness();
+  assert.equal(validateWorkStateFields({task: 'ok', count: 1.5}), null);
+  const max = 2_000 - JSON.stringify({note: ''}).length;
+  assert.equal(validateWorkStateFields({note: 'x'.repeat(max)}), null);
+  assert.match(validateWorkStateFields({note: 'x'.repeat(max + 1)}), /2000/);
+  assert.match(validateWorkStateFields({count: Number.MAX_SAFE_INTEGER + 1}), /safe finite/);
+  assert.match(validateWorkStateFields({count: NaN}), /safe finite/);
+  assert.match(validateWorkStateFields({count: Infinity}), /safe finite/);
+  assert.match(validateWorkStateFields({'': 'invalid'}), /non-empty/);
+  assert.match(validateWorkStateFields({}), /non-empty/);
+  await h.call('work_state_write', {list: 'a'.repeat(150), fields:{note:'valid'}});
+  assert.equal(h.calls.length, 1);
+  await assert.rejects(h.call('work_state_write', {list:'todo', fields:{note:'x'.repeat(max+1)}}), /2000/);
+  await assert.rejects(h.call('work_state_write', {list:'todo', fields:{count:Number.MAX_SAFE_INTEGER + 1}}), /safe finite/);
+  assert.equal(h.calls.length, 1, 'invalid Work State updates never reach Worker');
+  const schema = h.tools.get('work_state_write').meta.inputSchema;
+  assert.equal(schema.list.safeParse('x'.repeat(200)).success, true);
+  assert.equal(schema.list.safeParse('x'.repeat(201)).success, false);
+  assert.equal(schema.fields.safeParse({n:Number.MAX_SAFE_INTEGER + 1}).success, false);
 });
 
 test('ordinary read/write scopes cannot delete', async () => {

@@ -2,7 +2,7 @@ name: Central memory MCP bridge checks
 
 on:
   push:
-    branches: [master, codex/gemini-mcp-source-icons]
+    branches: [master]
     paths:
       - 'chatgpt-mcp/**'
       - 'deploy/apply-claude-mem-viewer-branding.mjs'

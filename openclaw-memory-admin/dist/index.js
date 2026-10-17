@@ -1,27 +1,7 @@
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { Type } from 'typebox';
 import { defineToolPlugin } from 'openclaw/plugin-sdk/tool-plugin';
 
 const HTTP_TIMEOUT_MS = 12_000;
-
-const API_KEY_FILE = process.env.CLAUDE_MEM_API_KEY_FILE || path.join(os.homedir(), '.claude-mem', 'central-api-key');
-
-function apiKeyHeaders(workerUrl) {
-  let key = String(process.env.CLAUDE_MEM_WORKER_API_KEY || '').trim();
-  if (!key) {
-    try { key = fs.readFileSync(API_KEY_FILE, 'utf8').trim(); } catch { /* local worker needs no credential */ }
-  }
-  if (!key) return {};
-  if (!/^[a-f0-9]{64}$/.test(key)) throw new Error('Invalid central memory API key format');
-  const remote = new URL(workerUrl);
-  if (remote.protocol !== 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(remote.hostname)) {
-    throw new Error('Central memory API key requires HTTPS or loopback');
-  }
-  return { 'X-Claude-Mem-Key': key };
-}
-
 
 function resolveWorkerUrl(config) {
   const configured = String(config?.workerUrl || '').trim();
@@ -37,7 +17,6 @@ async function deleteRecord(workerUrl, type, id, signal) {
   const headers = { accept: 'application/json' };
   const token = String(process.env.CLAUDE_MEM_WORKER_TOKEN || '').trim();
   if (token) headers.authorization = `Bearer ${token}`;
-  Object.assign(headers, apiKeyHeaders(workerUrl));
 
   const timeoutSignal = AbortSignal.timeout(HTTP_TIMEOUT_MS);
   const requestSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;

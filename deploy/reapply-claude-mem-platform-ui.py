@@ -262,6 +262,30 @@ def patch_worker(path: Path):
         print('patched worker', path)
     else:
         print('worker already patched', path)
+    verify_worker_patch(path)
+
+
+def verify_worker_patch(path: Path):
+    """Fail the official updater if identity capture silently regresses."""
+    source = path.read_text(encoding='utf-8')
+    match = WORKER_CUSTOM_RE.search(source)
+    if not match:
+        raise RuntimeError(f'worker platform-source fallback missing: {path}')
+    custom = match.group(0)
+    if any(marker not in custom for marker in (
+        'i==="claude-web"', 'i==="grok-web"',
+        'i==="muse-web"', 'i==="executor"',
+    )):
+        raise RuntimeError(f'worker platform-source identity missing: {path}')
+    norm = match.group('norm')
+    norm_marker = f'function {norm}('
+    begin = source.find(norm_marker)
+    end = source.find('}function ', begin)
+    if begin < 0 or end < 0 or end > begin + 700:
+        raise RuntimeError(f'worker platform-source normalization changed: {path}')
+    segment = source[begin:end]
+    if '==="claude-web"' not in segment or '==="grok-web"' not in segment:
+        raise RuntimeError(f'worker web source name preservation missing: {path}')
 
 
 # AgentDock platform source fallback END
@@ -287,6 +311,10 @@ def main() -> int:
     htmls += [Path(x) for x in glob.glob('/root/.claude/plugins/cache/thedotmack/claude-mem/*/ui/viewer.html')]
     workers = [Path('/root/.claude/plugins/marketplaces/thedotmack/plugin/scripts/worker-service.cjs')]
     workers += [Path(x) for x in glob.glob('/root/.claude/plugins/cache/thedotmack/claude-mem/*/scripts/worker-service.cjs')]
+
+    if not workers[0].is_file():
+        print(f'ERROR: official active worker is missing: {workers[0]}', file=sys.stderr)
+        return 1
 
     errors = []
     errors += run_patch('viewer bundle', bundles, patch_bundle)

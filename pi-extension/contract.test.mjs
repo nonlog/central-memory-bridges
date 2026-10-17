@@ -21,6 +21,8 @@ requireText("selectedIds", "guided selection must be exposed");
 requireText('name: "mem_timeline"', "upstream-compatible timeline must be present");
 requireText('name: "mem_get_observations"', "upstream-compatible observation fetch must be present");
 requireText('CLAUDE_MEM_WORKER_URL', "remote central Worker URL support must remain");
+assert.equal(source.includes('X-Claude-Mem-Key'), false, "retired Nginx API key must not return");
+assert.equal(source.includes('central-api-key'), false, "retired local gateway key file must not return");
 requireText('name: "work_state_read"', "custom Work State support must remain");
 requireText('name: "work_state_write"', "custom Work State support must remain");
 requireText('name: "claude_mem_recent"', "custom recent-memory tool must remain");

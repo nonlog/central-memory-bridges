@@ -4,19 +4,15 @@ on:
     paths:
       - 'deploy/reapply-claude-mem-platform-ui.py'
       - 'deploy/test_platform_ui_patch.py'
-      - 'deploy/windows-central-memory-gateway.cjs'
-      - 'deploy/windows-central-memory-gateway.test.cjs'
-      - 'deploy/windows-central-spool-relay.cjs'
-      - 'deploy/windows-central-spool-relay.test.cjs'
+      - 'deploy/claude-mem-weekly-update.sh'
+      - 'deploy/test_updater_contract.py'
       - '.github/workflows/claude-mem-platform-ui-contract.yml'
   pull_request:
     paths:
       - 'deploy/reapply-claude-mem-platform-ui.py'
       - 'deploy/test_platform_ui_patch.py'
-      - 'deploy/windows-central-memory-gateway.cjs'
-      - 'deploy/windows-central-memory-gateway.test.cjs'
-      - 'deploy/windows-central-spool-relay.cjs'
-      - 'deploy/windows-central-spool-relay.test.cjs'
+      - 'deploy/claude-mem-weekly-update.sh'
+      - 'deploy/test_updater_contract.py'
       - '.github/workflows/claude-mem-platform-ui-contract.yml'
   workflow_dispatch:
 
@@ -32,4 +28,5 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m unittest discover -s deploy -p 'test_platform_ui_patch.py' -v
-      - run: node --test deploy/windows-central-memory-gateway.test.cjs deploy/windows-central-spool-relay.test.cjs
+      - run: python -m unittest discover -s deploy -p 'test_updater_contract.py' -v
+      - run: bash -n deploy/claude-mem-weekly-update.sh

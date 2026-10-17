@@ -10,6 +10,25 @@ const projectName = z.string().min(1).max(96);
 const positiveId = z.number().int().positive();
 const recordKind = z.enum(['observation', 'summary', 'prompt']);
 const recordItem = z.object({ type: recordKind, id: positiveId });
+const workStateFieldValue = z.union([
+  z.string(), z.number().finite().refine(n => !Number.isInteger(n) || Number.isSafeInteger(n)),
+  z.boolean(), z.null(),
+]);
+const workStateFields = z.record(z.string().min(1), workStateFieldValue);
+
+/** Match official Worker v13.41 WorkStateRoutes before invoking a write. */
+export function validateWorkStateFields(fields) {
+  if (!fields || typeof fields !== 'object' || Array.isArray(fields) || Object.keys(fields).length === 0) {
+    return 'fields must be a non-empty object';
+  }
+  if (Object.entries(fields).some(([key, value]) =>
+    !key || !(value === null || typeof value === 'string' || typeof value === 'boolean' ||
+      (typeof value === 'number' && Number.isFinite(value) &&
+        (!Number.isInteger(value) || Number.isSafeInteger(value))))
+  )) return 'fields must map non-empty keys to strings, safe finite numbers, booleans or null';
+  if (JSON.stringify(fields).length > 2_000) return 'fields must be at most 2000 characters as JSON';
+  return null;
+}
 
 export function registerWorkerMemoryTools(server, { worker, platform, defaultProject, safeProject, redactSecrets, scopes }) {
   const granted = new Set(scopes);
@@ -172,13 +191,13 @@ export function registerWorkerMemoryTools(server, { worker, platform, defaultPro
     description: 'Append a task/status or arbitrary state fields to a project list. Virtual Web MCP cwd is a database key, not a filesystem path.',
     inputSchema: {
       project: projectName.optional(),
-      list: z.string().min(1).max(100),
-      fields: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])),
+      list: z.string().min(1).max(200),
+      fields: workStateFields,
     }, annotations: writeOnly,
   }, async ({ project, list, fields }) => {
     requireScope('memory:write');
-    if (Object.keys(fields).length === 0) throw new Error('fields must not be empty');
-    if (JSON.stringify(fields).length > 8_000) throw new Error('fields too large');
+    const invalid = validateWorkStateFields(fields);
+    if (invalid) throw new Error(invalid);
     return response(await post('/api/work-state/entries', { cwd: virtualCwd(project), list, fields }));
   });
 

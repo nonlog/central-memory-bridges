@@ -1,0 +1,28 @@
+"""Static tests for the deployed Ubuntu-us official-update wrapper."""
+import unittest
+from pathlib import Path
+
+UPDATE = Path(__file__).with_name("claude-mem-weekly-update.sh").read_text(encoding="utf-8")
+
+
+class TestAutomaticUpgradeContract(unittest.TestCase):
+    def test_official_remote_spool_token_is_preserved(self):
+        self.assertIn('"CLAUDE_MEM_WORKER_INGEST_TOKEN"', UPDATE)
+        self.assertIn('for k,v in old.items():', UPDATE)
+        self.assertIn('d[k]=v', UPDATE)
+
+    def test_identity_patch_failure_aborts_update_before_worker_restart(self):
+        call = 'python3 /root/apps/central-memory-bridges/deploy/reapply-claude-mem-platform-ui.py'
+        self.assertIn(call, UPDATE)
+        self.assertNotIn('WARNING: platform identity UI overlay could not be reapplied', UPDATE)
+        self.assertIn('trap \'rc=$?;', UPDATE)
+        self.assertLess(UPDATE.index(call), UPDATE.index('systemctl start "$SERVICE"', UPDATE.index('npx --yes')))
+
+    def test_existing_update_lifecycle_and_backup_retention_remain(self):
+        self.assertIn('health_version "$LATEST"', UPDATE)
+        self.assertIn('restore_dependent_service', UPDATE)
+        self.assertIn('NR>2', UPDATE)
+
+
+if __name__ == "__main__":
+    unittest.main()

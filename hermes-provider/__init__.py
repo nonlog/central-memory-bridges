@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import re
 import threading
@@ -130,6 +131,28 @@ def _safe_project(value: str, fallback: str) -> str:
     text = re.sub(r"[^A-Za-z0-9._-]+", "-", str(value or "").strip())
     text = re.sub(r"-+", "-", text).strip("-._")
     return text or fallback
+
+
+def _work_state_fields_error(fields: Any) -> Optional[str]:
+    """Mirror WorkStateRoutes' bounded, JSON-safe primitive field contract."""
+    if not isinstance(fields, dict) or not fields:
+        return "fields must be a non-empty object"
+    if any(not isinstance(k, str) or not k for k in fields):
+        return "field names must be non-empty strings"
+    for value in fields.values():
+        if value is not None and not isinstance(value, (str, int, float, bool)):
+            return "field values must be string, number, boolean, or null"
+        if isinstance(value, int) and not isinstance(value, bool) and abs(value) > (2 ** 53 - 1):
+            return "numeric fields must be finite, and integer values must be safe"
+        if isinstance(value, float) and (
+            not math.isfinite(value)
+            or (value.is_integer() and abs(value) > (2 ** 53 - 1))
+        ):
+            return "numeric fields must be finite, and integer values must be safe"
+    encoded = json.dumps(fields, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+    if len(encoded.encode("utf-16-le")) // 2 > 2000:
+        return "fields must be at most 2000 characters as JSON"
+    return None
 
 
 def _load_config() -> Dict[str, Any]:
@@ -435,14 +458,9 @@ class ClaudeMemMemoryProvider(MemoryProvider):
             fields = args.get("fields")
             if not list_name or len(list_name) > 200:
                 return json.dumps({"ok": False, "error": "list is required and must be at most 200 characters"})
-            if not isinstance(fields, dict) or not fields:
-                return json.dumps({"ok": False, "error": "fields must be a non-empty object"})
-            if any(not isinstance(k, str) or not k for k in fields):
-                return json.dumps({"ok": False, "error": "field names must be non-empty strings"})
-            if any(v is not None and not isinstance(v, (str, int, float, bool)) for v in fields.values()):
-                return json.dumps({"ok": False, "error": "field values must be string, number, boolean, or null"})
-            if len(json.dumps(fields, ensure_ascii=False)) > 2000:
-                return json.dumps({"ok": False, "error": "fields must be at most 2000 characters as JSON"})
+            field_error = _work_state_fields_error(fields)
+            if field_error:
+                return json.dumps({"ok": False, "error": field_error})
             raw = self._post_json(
                 "/api/work-state/entries",
                 {"cwd": os.getcwd(), "list": list_name, "fields": fields},
