@@ -17,7 +17,7 @@ async function cacheGrokIcon(htmlFile) {
       const response = await fetch(GROK_ICON_URL, { signal: AbortSignal.timeout(8000) });
       if (!response.ok) throw new Error('HTTP ' + response.status);
       const svg = await response.text();
-      if (svg.length < 100 || svg.length > 100000 || !/^<svg[\\s>]/.test(svg.trim()) || /<script\\b/i.test(svg)) {
+      if (svg.length < 100 || svg.length > 100000 || !/^<svg[\s>]/.test(svg.trim()) || /<script\b/i.test(svg)) {
         throw new Error('Unexpected SVG asset');
       }
       grokIconSource = svg;
