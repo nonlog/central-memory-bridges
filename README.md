@@ -10,7 +10,7 @@ Integration source for connecting multiple AI clients to one central `claude-mem
 - `memory-admin-mcp/` — standalone stdio MCP for Claude Code and Codex that adds only exact-ID `claude_mem_forget` beside their official `claude-mem` integrations.
 - `openclaw-memory-admin/` — optional OpenClaw tool-only plugin exposing the same exact-ID `claude_mem_forget` contract without modifying the official OpenClaw `claude-mem` plugin.
 - `deploy/` — sanitized deployment examples plus repeatable local deployment helpers. Real credentials and runtime token state are intentionally excluded.
-- `deploy/apply-claude-mem-viewer-branding.mjs` — idempotent CSS-only overlay that adds recognizable platform icons to `claude-mem` Viewer source badges without changing Worker/database behavior.
+- `deploy/apply-claude-mem-viewer-branding.mjs` — idempotent legacy Viewer badge CSS plus v14 My Work SVG identity overlay; official SVG mappings and Worker/database behavior stay unchanged.
 
 ## Production model
 
@@ -71,7 +71,7 @@ The administration layer deliberately does not implement fuzzy deletion, project
 
 See [`docs/MEMORY_ADMIN.md`](docs/MEMORY_ADMIN.md) for Claude Code, Codex, and OpenClaw setup, sync-aware Worker behavior, failure modes, and security rules.
 
-## claude-mem Viewer platform branding
+## claude-mem Viewer and My Work platform branding
 
 The Viewer branding overlay keeps the upstream card/data model intact and decorates existing `platform_source` badges for ChatGPT, Gemini, Codex, Claude, Pi, Hermes, OpenClaw, and legacy OMP records. It supports source templates, installed/marketplace Viewer HTML, and versioned cache Viewer HTML.
 
@@ -82,7 +82,7 @@ node deploy/apply-claude-mem-viewer-branding.mjs --root /path/to/claude-mem
 node deploy/apply-claude-mem-viewer-branding.mjs --root /path/to/claude-mem --check
 ```
 
-Reapply it after `claude-mem` upgrades. The current patch is idempotent and replaces its own marked CSS block rather than accumulating duplicate overrides. Some `claude-mem` versions cache Viewer HTML at Worker startup, so verify the live response and restart/reload the Worker only when the served HTML remains stale.
+Reapply it after `claude-mem` upgrades. The patcher keeps official `agentIcon()` mappings and SVGs in My Work, adds missing Web/Pi/Hermes/Executor/OpenClaw identities with `bridge-*.svg` files, and checks both UIs without rewriting upstream behavior. It is idempotent; unknown upstream Work View function shapes fail closed. Automated upgrades apply and verify the overlay, while an already-current update check also verifies and repairs missing branding without restarting the Worker. Some `claude-mem` versions cache Viewer HTML at Worker startup, so verify the live response and restart/reload the Worker only when the served HTML remains stale.
 
 See [`docs/CLAUDE_MEM_VIEWER_BRANDING.md`](docs/CLAUDE_MEM_VIEWER_BRANDING.md) for icon provenance, deployment behavior, verification, upgrade handling, rollback, external-asset behavior, and trademark notes.
 

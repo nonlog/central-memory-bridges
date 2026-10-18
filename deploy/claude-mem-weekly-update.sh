@@ -112,7 +112,20 @@ LATEST=$(npm view claude-mem version --json | node -e 'let s="";process.stdin.on
 log "Installed=$CURRENT npm-latest=$LATEST"
 
 if [[ "$CURRENT" == "$LATEST" ]]; then
-  log "Already current; no restart or write performed"
+  # Also repair a missing UI overlay when the official version has not changed.
+  # Do not restart the Worker or touch the database on an up-to-date run.
+  BRANDING_PATCHER=/root/apps/central-memory-bridges/deploy/apply-claude-mem-viewer-branding.mjs
+  if [[ -f "$BRANDING_PATCHER" ]]; then
+    if node "$BRANDING_PATCHER" --root "$PLUGIN" --check >/dev/null 2>&1; then
+      log "Already current; Viewer and My Work icon overlays verified"
+    elif node "$BRANDING_PATCHER" --root "$PLUGIN" && node "$BRANDING_PATCHER" --root "$PLUGIN" --check; then
+      log "Already current; repaired and verified Viewer/My Work icon overlays without restart"
+    else
+      log "WARNING: Viewer/My Work icon overlay requires manual compatibility review"
+    fi
+  else
+    log "WARNING: branding patcher is missing from the bridge deployment"
+  fi
   exit 0
 fi
 
@@ -202,7 +215,7 @@ else
 fi
 
 BRANDING_PATCHER=/root/apps/central-memory-bridges/deploy/apply-claude-mem-viewer-branding.mjs
-if node "$BRANDING_PATCHER" --root "$PLUGIN"; then
+if node "$BRANDING_PATCHER" --root "$PLUGIN" && node "$BRANDING_PATCHER" --root "$PLUGIN" --check; then
   log "Reapplied claude-mem platform icon branding"
 else
   log "WARNING: platform icon branding could not be reapplied to marketplace UI; continuing official update"
@@ -217,7 +230,7 @@ for cache_root in /root/.claude/plugins/cache/thedotmack/claude-mem/*; do
   tmp_brand=$(mktemp -d /tmp/claude-mem-brand-cache.XXXXXX)
   mkdir -p "$tmp_brand/plugin"
   ln -s "$cache_root/ui" "$tmp_brand/plugin/ui"
-  if node "$BRANDING_PATCHER" --root "$tmp_brand"; then
+  if node "$BRANDING_PATCHER" --root "$tmp_brand" && node "$BRANDING_PATCHER" --root "$tmp_brand" --check; then
     log "Reapplied platform icon branding to cache $(basename "$cache_root")"
   else
     log "WARNING: platform icon branding could not be reapplied to cache $(basename "$cache_root")"

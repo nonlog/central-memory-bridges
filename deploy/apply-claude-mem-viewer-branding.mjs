@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 
 const GEMINI_ICON_URL = 'https://commons.wikimedia.org/wiki/Special:Redirect/file/Google_Gemini_icon_2025.svg';
 const GEMINI_ICON_NAME = 'gemini-icon.svg';
@@ -543,6 +544,102 @@ function patchHtml(text) {
   return clean.slice(0, index) + CSS + '\n' + clean.slice(index);
 }
 
+
+// Keep upstream's native agent mappings intact. Only provide identities that
+// upstream has not yet claimed; upstream may add native aliases in the future.
+const WORK_VIEW_START = '  // central-memory-bridges: extra-agent-icons:start';
+const WORK_VIEW_END = '  // central-memory-bridges: extra-agent-icons:end';
+const WORK_VIEW_EXTRAS = {
+  chatgpt: 'chatgpt',
+  'chatgpt-web': 'chatgpt',
+  gemini: 'gemini',
+  'gemini-web': 'gemini',
+  'claude-web': 'claude',
+  'pi': 'bridge-pi',
+  'pi-agent': 'bridge-pi',
+  hermes: 'hermes',
+  'grok-web': 'bridge-grok-web',
+  'muse-web': 'bridge-muse-web',
+  executor: 'bridge-executor',
+  openclaw: 'bridge-openclaw',
+  omp: 'bridge-omp',
+  'oh-my-pi': 'bridge-omp',
+};
+const BRIDGE_SVGS = ['pi', 'executor', 'grok-web', 'muse-web', 'openclaw', 'omp'];
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+
+function patchWorkView(source) {
+  const pattern = /export function agentIcon\(agent\) \{[\s\S]*?\n\}/;
+  const original = source.match(pattern)?.[0];
+  if (!original) throw new Error('Upstream agentIcon(agent) was not found; review the changed Work View contract.');
+
+  let fn = original;
+  const from = fn.indexOf(WORK_VIEW_START);
+  if (from >= 0) {
+    const to = fn.indexOf(WORK_VIEW_END, from);
+    if (to < 0) throw new Error('Incomplete Work View overlay markers.');
+    fn = fn.slice(0, from) + fn.slice(to + WORK_VIEW_END.length).replace(/^\n/, '');
+  }
+
+  const native = fn.match(/const name\s*=\s*\{([^}]*)\}\[agent\.platformSource\]/);
+  const originalReturn = '  return name ? `/assets/agents/${name}.svg` : null;';
+  if (!native || !fn.includes(originalReturn)) {
+    throw new Error('Upstream native agentIcon semantics changed; refuse to overwrite the official function.');
+  }
+  const nativeKeys = new Set([...native[1].matchAll(/(?:^|,)\s*(?:'([^']+)'|"([^"]+)"|([a-zA-Z_][\w-]*))\s*:/g)]
+    .map(match => match[1] || match[2] || match[3]));
+  const missing = Object.entries(WORK_VIEW_EXTRAS).filter(([identity]) => !nativeKeys.has(identity));
+  if (missing.length) {
+    const lines = missing.map(([identity, icon]) => `    ${JSON.stringify(identity)}: ${JSON.stringify(icon)},`);
+    const overlay = [
+      WORK_VIEW_START,
+      '  const bridgeIcon = {',
+      ...lines,
+      '  }[agent.platformSource];',
+      '  if (bridgeIcon) return `/assets/agents/${bridgeIcon}.svg`;',
+      WORK_VIEW_END,
+    ].join('\n');
+    fn = fn.replace(originalReturn, overlay + '\n' + originalReturn);
+  }
+  return source.replace(original, fn);
+}
+
+function workViewIconFiles(viewModel) {
+  const dest = path.join(path.dirname(viewModel), 'assets', 'agents');
+  return BRIDGE_SVGS.map(name => ({
+    name,
+    from: path.join(SCRIPT_DIR, 'agent-icons', name + '.svg'),
+    to: path.join(dest, 'bridge-' + name + '.svg'),
+  }));
+}
+
+function updateWorkView(viewModel, check) {
+  const before = fs.readFileSync(viewModel, 'utf8');
+  const after = patchWorkView(before);
+  const icons = workViewIconFiles(viewModel);
+  if (check) {
+    const matches = after === before && icons.every(({from, to}) =>
+      fs.existsSync(from) && fs.existsSync(to) && fs.readFileSync(from).equals(fs.readFileSync(to)));
+    console.log(`${matches ? 'OK' : 'OUTDATED_OR_MISSING'} ${viewModel}`);
+    return matches;
+  }
+  for (const {from, to} of icons) {
+    const asset = fs.readFileSync(from);
+    if (!fs.existsSync(to) || !fs.readFileSync(to).equals(asset)) {
+      fs.mkdirSync(path.dirname(to), { recursive: true });
+      fs.writeFileSync(to, asset);
+      console.log('ICON ' + to);
+    }
+  }
+  if (after !== before) {
+    fs.writeFileSync(viewModel, after, 'utf8');
+    console.log('PATCHED ' + viewModel);
+  } else {
+    console.log('UNCHANGED ' + viewModel);
+  }
+  return true;
+}
+
 const { root, check } = parseArgs(process.argv.slice(2));
 const rootPath = path.resolve(root);
 const relativeFiles = [
@@ -550,23 +647,37 @@ const relativeFiles = [
   'plugin/ui/viewer.html',
   'ui/viewer.html',
 ];
+const relativeWorkViews = [
+  'src/ui/work-view/view-model.js',
+  'plugin/ui/work-view/view-model.js',
+  'ui/work-view/view-model.js',
+];
 const files = relativeFiles
   .map((relativePath) => ({ relativePath, filePath: path.join(rootPath, relativePath) }))
   .filter(({ filePath }) => fs.existsSync(filePath));
+const workViews = relativeWorkViews
+  .map(relativePath => path.join(rootPath, relativePath))
+  .filter(filePath => fs.existsSync(filePath));
 
-if (files.length === 0) {
-  console.error(`No claude-mem viewer HTML found under: ${rootPath}`);
-  console.error(`Expected one of: ${relativeFiles.join(', ')}`);
+if (files.length === 0 && workViews.length === 0) {
+  console.error(`No claude-mem Viewer or My Work UI found under: ${rootPath}`);
   process.exit(1);
 }
 
 if (check) {
   let ok = true;
   for (const { relativePath, filePath } of files) {
-    const text = fs.readFileSync(filePath, 'utf8');
-    const current = hasCurrentBlock(text);
+    const current = hasCurrentBlock(fs.readFileSync(filePath, 'utf8'));
     console.log(`${current ? 'OK' : 'OUTDATED_OR_MISSING'} ${relativePath}`);
     ok &&= current;
+  }
+  for (const viewModel of workViews) {
+    try {
+      ok = updateWorkView(viewModel, true) && ok;
+    } catch (error) {
+      ok = false;
+      console.error(`OUTDATED_OR_MISSING ${viewModel}: ${error.message}`);
+    }
   }
   process.exit(ok ? 0 : 1);
 }
@@ -584,5 +695,6 @@ for (const { relativePath, filePath } of files) {
   fs.writeFileSync(filePath, after, 'utf8');
   console.log(`PATCHED ${relativePath}`);
 }
+for (const viewModel of workViews) updateWorkView(viewModel, false);
 
-console.log('Platform source icon branding applied. Refresh the Viewer; if the live endpoint still serves the previous HTML, restart the claude-mem worker because some versions cache Viewer HTML at startup.');
+console.log('Platform source icon overlays applied to Viewer and My Work. Native upstream icon mappings are preserved.');

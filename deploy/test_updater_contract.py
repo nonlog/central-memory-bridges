@@ -18,6 +18,12 @@ class TestAutomaticUpgradeContract(unittest.TestCase):
         self.assertIn('trap \'rc=$?;', UPDATE)
         self.assertLess(UPDATE.index(call), UPDATE.index('systemctl start "$SERVICE"', UPDATE.index('npx --yes')))
 
+    def test_work_view_branding_self_heals_without_a_worker_restart(self):
+        self.assertIn('Already current; Viewer and My Work icon overlays verified', UPDATE)
+        self.assertIn('node "$BRANDING_PATCHER" --root "$PLUGIN" --check', UPDATE)
+        self.assertIn('&& node "$BRANDING_PATCHER" --root "$PLUGIN" --check', UPDATE)
+        self.assertIn('&& node "$BRANDING_PATCHER" --root "$tmp_brand" --check', UPDATE)
+
     def test_existing_update_lifecycle_and_backup_retention_remain(self):
         self.assertIn('health_version "$LATEST"', UPDATE)
         self.assertIn('restore_dependent_service', UPDATE)

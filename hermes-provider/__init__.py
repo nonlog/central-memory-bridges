@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import math
@@ -206,6 +207,39 @@ def _strip_work_state_context(value: str) -> tuple[bool, str]:
     return True, tail[match.end():].lstrip()
 
 
+_FASTPATH_LOCK = threading.Lock()
+
+
+def _install_lean_capture_fastpath() -> None:
+    """Do not scrub an unused multi-megabyte transcript on the Gateway turn thread.
+
+    The Claude-mem bridge only syncs the current user/assistant text; its
+    sync_turn() intentionally does not consume ``messages``. Hermes currently
+    eagerly secret-scrubs *all* historical messages before queueing memory
+    sync, which can stall delivery on long Telegram sessions. Keep the normal
+    path for every other memory provider and preserve automatic capture.
+    This scoped integration workaround does not modify Hermes upstream files.
+    """
+    from agent.memory_manager import MemoryManager
+
+    with _FASTPATH_LOCK:
+        original = MemoryManager.sync_all
+        if getattr(original, "_claude_mem_lean_capture", False):
+            return
+
+        @functools.wraps(original)
+        def sync_without_unused_history(manager, *args, **kwargs):
+            if "messages" in kwargs:
+                providers = manager.providers
+                if providers and all(provider.name == "claude-mem" for provider in providers):
+                    kwargs = {key: value for key, value in kwargs.items() if key != "messages"}
+            return original(manager, *args, **kwargs)
+
+        sync_without_unused_history._claude_mem_lean_capture = True
+        MemoryManager.sync_all = sync_without_unused_history
+        logger.info("claude-mem: lean turn capture fastpath enabled (no unused transcript scrub)")
+
+
 class ClaudeMemMemoryProvider(MemoryProvider):
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         cfg = dict(config) if config is not None else _load_config()
@@ -277,6 +311,7 @@ class ClaudeMemMemoryProvider(MemoryProvider):
         ]
 
     def initialize(self, session_id: str, **kwargs) -> None:
+        _install_lean_capture_fastpath()
         with self._lock:
             self._hermes_home = str(kwargs.get("hermes_home") or "")
             self._profile = _safe_project(str(kwargs.get("agent_identity") or "default"), "default")

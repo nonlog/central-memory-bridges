@@ -1,4 +1,4 @@
-# claude-mem Viewer platform branding
+# claude-mem Viewer and My Work platform branding
 
 This repository carries a repeatable Viewer overlay for the central `claude-mem` deployment. It decorates the existing `platform_source` badges with recognizable product icons while leaving the Worker API, database, capture pipeline, and memory semantics unchanged.
 
@@ -15,6 +15,16 @@ This repository carries a repeatable Viewer overlay for the central `claude-mem`
 | OpenClaw | `openclaw`, `OpenClaw` | Current official OpenClaw Control UI favicon, copied locally as `openclaw-favicon.svg` |
 
 Unknown sources keep the upstream text-only behavior.
+
+## My Work v14+ SVG support
+
+The existing patcher also detects `src/ui/work-view/view-model.js`, `plugin/ui/work-view/view-model.js`, or `ui/work-view/view-model.js` and extends `agentIcon(agent)` only for sources not yet supported by the upstream mapping. Official SVGs (`codex`, `claude`, `gemini-cli`, `hermes-cli`) are retained without modification. Aliases `chatgpt`, `chatgpt-web`, `gemini`, `gemini-web`, `claude-web`, and `hermes` reuse the matching official SVGs. Pi, Grok Web, Muse Web, OpenClaw, Executor, and historical OMP use local `work-view/assets/agents/bridge-*.svg` files.
+
+`deploy/agent-icons/` stores reviewed copies of the previously deployed Viewer Grok/Muse/OpenClaw/OMP icons. The Pi and generic Executor identities use project-specific vector pictograms, not claims of official company artwork. SVGs are served locally; no new web requests are required during browsing. The added mapping is marked `central-memory-bridges: extra-agent-icons:start/end` for idempotent replacement.
+
+The patcher refuses unexpected upstream `agentIcon()` function shapes instead of silently overwriting them. `--check` validates both the My Work JS mapping and installed icon bytes. The official Worker API, authentication, and session/observation IDs are unchanged. The unattended installer keeps Worker identity/source enforcement strict, logs a nonblocking UI branding failure, and self-heals the UI overlay on an already-current version check without restarting the service.
+
+Run `node --test tests/work-view-branding.test.mjs` and `python3 -m unittest discover -s tests -p 'test_*.py'` for regression coverage, then verify `/` (My Work), `/viewer` (legacy Viewer), official `/work-view/assets/agents/chatgpt.svg`, and custom `/work-view/assets/agents/bridge-pi.svg`. The script is also applied to versioned cache copies after upgrades.
 
 ## Apply and verify
 
