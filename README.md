@@ -53,6 +53,17 @@ pi update
 
 If migrating from the legacy loose extension, remove `~/.pi/agent/extensions/central-claude-mem.ts` after the managed package is installed. Do not keep both copies enabled because both would register the same lifecycle handlers and tools.
 
+## Public Worker security and authenticated My Work
+
+The official remote HTTP Spool transport is retained; its Bearer token protects
+**Spool ingestion only**, not raw Worker API calls. The machine proxy now
+blocks destructive and credential-bearing routes, moves the browser UI to
+our existing Basic-Auth admin hostname, and exposes an authenticated
+**read-only** My Work view without modifying upstream. See
+[`docs/REMOTE_WORKER_SURFACE.md`](docs/REMOTE_WORKER_SURFACE.md) for the
+remaining public context/search exposure, HTTP transport limitations,
+rollback plan, and the coordinated client migration needed for full API auth.
+
 ## Exact-ID memory deletion
 
 The central Worker already exposes official production DELETE routes for observations, summaries, and prompts. `memory-admin-mcp/` and `openclaw-memory-admin/` expose that capability through one constrained contract:

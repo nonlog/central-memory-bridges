@@ -24,6 +24,14 @@ class TestAutomaticUpgradeContract(unittest.TestCase):
         self.assertIn('&& node "$BRANDING_PATCHER" --root "$PLUGIN" --check', UPDATE)
         self.assertIn('&& node "$BRANDING_PATCHER" --root "$tmp_brand" --check', UPDATE)
 
+    def test_independent_hermes_provider_survives_official_installer(self):
+        self.assertIn('HERMES_PROVIDER=/root/.hermes/plugins/claude-mem/__init__.py', UPDATE)
+        self.assertIn('"$BACKUP/hermes-provider.py"', UPDATE)
+        self.assertIn('! cmp -s "$BACKUP/hermes-provider.py" "$HERMES_PROVIDER"', UPDATE)
+        self.assertIn('cp -a -- "$BACKUP/hermes-provider.py" "$HERMES_PROVIDER"', UPDATE)
+        self.assertIn('--ide claude-code', UPDATE)
+        self.assertIn('upstream now bundles a Hermes integration', UPDATE)
+
     def test_existing_update_lifecycle_and_backup_retention_remain(self):
         self.assertIn('health_version "$LATEST"', UPDATE)
         self.assertIn('restore_dependent_service', UPDATE)

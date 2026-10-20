@@ -75,6 +75,14 @@ restore_after_failure() {
     log "Restored pre-update central data snapshot"
   fi
 
+  # A future official Hermes installer must not replace our independent
+  # production MemoryProvider, even when the Worker upgrade itself fails.
+  if [[ -n "$BACKUP" && -f "$BACKUP/hermes-provider.py" ]]; then
+    install -d -m 0755 /root/.hermes/plugins/claude-mem
+    cp -a -- "$BACKUP/hermes-provider.py" /root/.hermes/plugins/claude-mem/__init__.py
+    log "Restored independent Hermes provider"
+  fi
+
   systemctl start "$SERVICE"
   if health_version "$CURRENT"; then
     log "Rollback healthy on version $CURRENT"
@@ -144,6 +152,14 @@ npm pack "claude-mem@$CURRENT" --silent --pack-destination "$BACKUP" >/dev/null
 LOCAL_ROLLBACK=$(mktemp -d /root/.cache/claude-mem-update-rollback.XXXXXX)
 cp -a --reflink=auto -- "$PLUGIN" "$LOCAL_ROLLBACK/marketplace"
 
+# The independent Hermes bridge is never installed by this update command.
+# Snapshot its production implementation so any future installer side effect
+# cannot quietly replace lean capture, Work State, or its tool contracts.
+HERMES_PROVIDER=/root/.hermes/plugins/claude-mem/__init__.py
+if [[ -f "$HERMES_PROVIDER" ]]; then
+  cp -a -- "$HERMES_PROVIDER" "$BACKUP/hermes-provider.py"
+fi
+
 if systemctl is-active --quiet "$DEPENDENT_SERVICE"; then
   DEPENDENT_WAS_ACTIVE=1
   log "Dependent service $DEPENDENT_SERVICE is active and will be restored after the worker update"
@@ -173,6 +189,19 @@ export CLAUDE_MEM_DATA_DIR="$DATA"
 export CLAUDE_MEM_WORKER_HOST=127.0.0.1
 export CLAUDE_MEM_WORKER_PORT=37777
 npx --yes "claude-mem@$LATEST" install --provider claude --ide claude-code --runtime worker --no-auto-start
+
+if [[ -f "$BACKUP/hermes-provider.py" ]] && ! cmp -s "$BACKUP/hermes-provider.py" "$HERMES_PROVIDER"; then
+  log "ERROR: official upgrade altered independent Hermes plugin; aborting and restoring snapshot"
+  cp -a -- "$BACKUP/hermes-provider.py" "$HERMES_PROVIDER"
+  false
+fi
+# A new upstream Hermes package is not automatically installed. Explicitly
+# reconcile the two providers in a separate review before changing installer IDE.
+for hermes_candidate in "$PLUGIN/hermes/claude-mem/plugin.yaml" "$PLUGIN/plugin/hermes/claude-mem/plugin.yaml"; do
+  if [[ -f "$hermes_candidate" ]]; then
+    log "NOTE: upstream now bundles a Hermes integration; local Hermes plugin remains independent"
+  fi
+done
 
 # Source attribution is a data-integrity requirement. If a new upstream
 # bundle invalidates the patch contract, fail the update so the ERR trap

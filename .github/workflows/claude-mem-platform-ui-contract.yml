@@ -6,6 +6,9 @@ on:
       - 'deploy/test_platform_ui_patch.py'
       - 'deploy/claude-mem-weekly-update.sh'
       - 'deploy/test_updater_contract.py'
+      - 'deploy/nginx-claude-mem-*.conf.example'
+      - 'deploy/test_public_worker_proxy.py'
+      - 'docs/REMOTE_WORKER_SURFACE.md'
       - '.github/workflows/claude-mem-platform-ui-contract.yml'
   pull_request:
     paths:
@@ -13,6 +16,9 @@ on:
       - 'deploy/test_platform_ui_patch.py'
       - 'deploy/claude-mem-weekly-update.sh'
       - 'deploy/test_updater_contract.py'
+      - 'deploy/nginx-claude-mem-*.conf.example'
+      - 'deploy/test_public_worker_proxy.py'
+      - 'docs/REMOTE_WORKER_SURFACE.md'
       - '.github/workflows/claude-mem-platform-ui-contract.yml'
   workflow_dispatch:
 
@@ -29,4 +35,5 @@ jobs:
           python-version: '3.12'
       - run: python -m unittest discover -s deploy -p 'test_platform_ui_patch.py' -v
       - run: python -m unittest discover -s deploy -p 'test_updater_contract.py' -v
+      - run: python -m unittest discover -s deploy -p 'test_public_worker_proxy.py' -v
       - run: bash -n deploy/claude-mem-weekly-update.sh

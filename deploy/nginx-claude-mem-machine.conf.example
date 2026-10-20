@@ -1,0 +1,105 @@
+server {
+    listen 127.0.0.1:37779;
+    server_name claude-mem.414222.xyz;
+
+    # OAuth metadata discovery for ChatGPT custom MCP apps.
+    location ~ ^/\.well-known/oauth-(protected-resource|authorization-server)(/.*)?$ {
+        proxy_pass http://127.0.0.1:18790;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header Connection "";
+    }
+
+    # The authorization endpoint requires the same owner credential as the
+    # claude-mem admin UI. The bridge itself never sees the password/hash.
+    location ^~ /chatgpt-mcp/oauth/authorize {
+        auth_basic "Central Memory MCP";
+        auth_basic_user_file /etc/nginx/.claude-mem-admin.htpasswd;
+        proxy_pass http://127.0.0.1:18790/oauth/authorize;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Auth-User $remote_user;
+        proxy_set_header Connection "";
+    }
+
+    # Strip /chatgpt-mcp before forwarding to the loopback-only MCP bridge.
+    location ^~ /chatgpt-mcp/ {
+        proxy_pass http://127.0.0.1:18790/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_read_timeout 3600s;
+    }
+
+    # Official remote clients upload their durable outbox using this route.
+    # The upstream ingest token is verified by the Worker. Keep this route
+    # independent of admin browser authentication and Web MCP OAuth.
+    location = /api/spool/ingest {
+        if ($request_method != POST) { return 405; }
+        client_max_body_size 5m;
+        proxy_pass http://127.0.0.1:37777;
+        proxy_http_version 1.1;
+        proxy_set_header Host 127.0.0.1:37777;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_read_timeout 30s;
+    }
+
+    # The public browser interface is not a safe unauthenticated viewer.
+    # The existing admin virtual host uses Basic Auth for My Work / Viewer.
+    location = / {
+        return 302 https://claude-mem-admin.414222.xyz/;
+    }
+    location = /viewer {
+        return 302 https://claude-mem-admin.414222.xyz/viewer;
+    }
+    location = /viewer.html {
+        return 302 https://claude-mem-admin.414222.xyz/viewer;
+    }
+    location ^~ /work-view/ {
+        return 302 https://claude-mem-admin.414222.xyz$request_uri;
+    }
+    location = /work-view { return 302 https://claude-mem-admin.414222.xyz/; }
+    location = /tv { return 302 https://claude-mem-admin.414222.xyz/tv; }
+    location = /tv.html { return 302 https://claude-mem-admin.414222.xyz/tv.html; }
+    location = /restart { return 302 https://claude-mem-admin.414222.xyz/restart; }
+    # The public live observation stream would disclose memory contents.
+    location = /stream { return 403; }
+
+    # Work View is explicitly loopback-only upstream. It is intentionally
+    # available only as an authenticated, read-only projection on the admin
+    # vhost, and is never exposed on the public machine vhost.
+    location ^~ /api/work-view {
+        return 403;
+    }
+
+    # Protect credential-bearing settings, local administration and operations.
+    # These are NOT needed by remote spool or ordinary context retrieval.
+    location ~ ^/api/(settings|admin|logs|chroma|mcp|import|export|reset|backup|backups|debug|diagnostics)(/|$) {
+        return 403;
+    }
+
+    # Compatibility window for legacy public Worker API reads (context/search,
+    # Session routes and some Pi tools). The official Worker does not provide
+    # general-purpose API authentication. GET memory endpoints remain exposed.
+    # See docs/REMOTE_WORKER_SURFACE.md before tightening this further.
+    location / {
+        # No anonymous destructive/administrative HTTP methods on this host.
+        if ($request_method ~ ^(DELETE|PATCH|PUT)$) { return 403; }
+        proxy_pass http://127.0.0.1:37777;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_read_timeout 3600s;
+    }
+}
