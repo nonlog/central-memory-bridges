@@ -53,6 +53,18 @@ pi update
 
 If migrating from the legacy loose extension, remove `~/.pi/agent/extensions/central-claude-mem.ts` after the managed package is installed. Do not keep both copies enabled because both would register the same lifecycle handlers and tools.
 
+## Claude-mem v15 search migration (pre-upgrade)
+
+The Worker 15.0.1 release replaces guided `POST /api/mem-search` with
+Smart index/timeline/detail retrieval and an optional `POST /api/dumb-search`.
+Our ChatGPT MCP and Pi clients now select the correct 14.x/15.x contract at
+runtime, retain the existing `mem_search` tool name, expose `dumb_search`
+and refuse obsolete continuation tokens. Before upgrading a central Worker,
+the unattended updater uses an **exact-version compatibility allowlist** to
+hold unapproved releases without stopping any service. **15.0.1 remains held
+until staged Worker/real-client verification is complete.** See
+[`docs/CLAUDE_MEM_15_SEARCH_MIGRATION.md`](docs/CLAUDE_MEM_15_SEARCH_MIGRATION.md).
+
 ## Public Worker security and authenticated My Work
 
 The official remote HTTP Spool transport is retained; its Bearer token protects

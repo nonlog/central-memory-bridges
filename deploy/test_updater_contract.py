@@ -32,6 +32,13 @@ class TestAutomaticUpgradeContract(unittest.TestCase):
         self.assertIn('--ide claude-code', UPDATE)
         self.assertIn('upstream now bundles a Hermes integration', UPDATE)
 
+    def test_upstream_upgrade_is_blocked_before_worker_changes(self):
+        gate = 'node "$COMPATIBILITY_GATE" --installed "$CURRENT" --candidate "$LATEST"'
+        self.assertIn(gate, UPDATE)
+        self.assertIn('COMPATIBILITY HOLD: $LATEST not approved', UPDATE)
+        self.assertLess(UPDATE.index(gate), UPDATE.index('stamp=$(date'))
+        self.assertLess(UPDATE.index(gate), UPDATE.index('log "Stopping $SERVICE for consistent backup and official update"'))
+
     def test_existing_update_lifecycle_and_backup_retention_remain(self):
         self.assertIn('health_version "$LATEST"', UPDATE)
         self.assertIn('restore_dependent_service', UPDATE)

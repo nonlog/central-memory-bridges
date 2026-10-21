@@ -2,11 +2,16 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { registerWorkerMemoryTools, validateWorkStateFields } from './full-memory-tools.mjs';
 
-function harness(scopes = ['memory:read', 'memory:write'], platform = 'claude-web') {
+function harness(scopes = ['memory:read', 'memory:write'], platform = 'claude-web', version = '14.0.1') {
   const tools = new Map(), calls = [];
   registerWorkerMemoryTools({ registerTool(name, meta, fn) { tools.set(name, { meta, fn }); } }, {
     worker: async (path, opts = {}) => {
+      if (path === '/api/version') return { version };
       calls.push({ path, method: opts.method || 'GET', body: opts.body ? JSON.parse(opts.body) : null });
+      if (version.startsWith('15.') && path.startsWith('/api/search?')) return {
+        observations:[{id:42,title:'Parser repaired',project:'my-project',narrative:'PRIVATE_FACTS_NOT_FOR_INDEX'}],
+        sessions:[], prompts:[], totalResults:1,
+      };
       return { ok: true, path };
     },
     platform, defaultProject: platform, scopes,
@@ -18,7 +23,7 @@ function harness(scopes = ['memory:read', 'memory:write'], platform = 'claude-we
 
 test('the shared MCP exposes Worker functionality but no raw host proxy', () => {
   const h = harness();
-  for (const name of ['mem_search','save_memory','memory_search_advanced','memory_timeline',
+  for (const name of ['mem_search','dumb_search','save_memory','memory_search_advanced','memory_timeline',
     'memory_get_observations','memory_get_tool_uses','memory_list_records','memory_get_record',
     'memory_projects','memory_stats','work_state_read','work_state_write','team_brief',
     'team_search','session_start_context','claude_mem_forget','memory_delete_session',
@@ -114,4 +119,50 @@ test('Executor save_memory defaults to Executor and non-Executor schema has no s
   assert.equal(gemini.tools.get('save_memory').meta.inputSchema.agent_identity,undefined);
   await gemini.call('save_memory',{text:'web message',agent_identity:'codex'});
   assert.equal(gemini.calls[0].body.metadata.platformSource,'gemini');
+});
+
+test('Worker 14 continues the exact legacy guided continuation protocol', async () => {
+  const h = harness(undefined, 'pi', '14.0.1');
+  await h.call('mem_search', {
+    mode:'guided', continuation:'ms_123456789012345678901234', selectedIds:['S10', 20],
+  });
+  assert.equal(h.calls[0].path, '/api/mem-search');
+  assert.deepEqual(h.calls[0].body.selectedIds, ['S10',20]);
+  await h.call('dumb_search', {query:'parser',limit:5});
+  assert.equal(h.calls[1].path, '/api/mem-search');
+  assert.equal(h.calls[1].body.mode, 'auto');
+});
+
+test('Worker 15 Smart search starts with GET index; optional auto/dumb use new POST route', async () => {
+  const h = harness(undefined,'claude-web','15.0.1');
+  const index = await h.call('mem_search', {query:'parser bugs', project:'my-project', mode:'guided',limit:5});
+  assert.equal(index.structuredContent.index[0].id,'42');
+  assert.ok(!JSON.stringify(index).includes('PRIVATE_FACTS_NOT_FOR_INDEX'));
+  assert.equal(h.calls[0].path, '/api/search?query=parser+bugs&project=my-project&limit=5');
+  assert.equal(h.calls[0].method, 'GET');
+  await h.call('mem_search', {query:'parser bugs',mode:'auto',maxDetails:2});
+  assert.equal(h.calls[1].path,'/api/dumb-search');
+  assert.deepEqual(h.calls[1].body,{query:'parser bugs',maxDetails:2});
+  await h.call('dumb_search',{query:'parser'});
+  assert.equal(h.calls[2].path,'/api/dumb-search');
+  assert.deepEqual(h.calls[2].body,{query:'parser'});
+  await h.call('memory_timeline',{anchor:42});
+  await h.call('memory_get_observations',{ids:[42]});
+  assert.equal(h.calls[3].path,'/api/timeline?anchor=42');
+  assert.equal(h.calls[4].path,'/api/observations/batch');
+});
+
+test('Worker 15 rejects obsolete continuation and selectedIds without hitting Worker search', async () => {
+  const h = harness(undefined,'pi','15.0.1');
+  await assert.rejects(h.call('mem_search',{continuation:'ms_123456789012345678901234'}),
+    /Worker 15 removed guided continuation/);
+  await assert.rejects(h.call('mem_search',{query:'parser',selectedIds:[15]}),
+    /Worker 15 removed guided continuation/);
+  assert.equal(h.calls.length,0);
+});
+
+test('unknown Worker version fails closed instead of invoking removed search', async () => {
+  const h=harness(undefined,'pi','v15.0.1');
+  await assert.rejects(h.call('mem_search',{query:'parser'}),/Unknown central Worker version/);
+  assert.equal(h.calls.length,0);
 });

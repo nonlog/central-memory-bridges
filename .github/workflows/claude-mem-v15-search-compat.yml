@@ -1,0 +1,49 @@
+name: Claude-mem 14 and 15 search compatibility
+on:
+  push:
+    branches: [master, 'codex/**']
+    paths:
+      - 'shared/**'
+      - 'chatgpt-mcp/**'
+      - 'pi-extension/**'
+      - 'deploy/check-worker-upgrade.*'
+      - 'deploy/worker-upgrade-policy.json'
+      - 'deploy/verify-upstream-search-v15.mjs'
+      - '.github/workflows/claude-mem-v15-search-compat.yml'
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  dual-worker-search:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Restore MCP dependencies
+        run: npm ci --prefix chatgpt-mcp --no-audit --no-fund
+      - name: Worker v14/v15 route plans, MCP schema, and upgrade gate
+        run: |
+          node --check chatgpt-mcp/server.mjs
+          node --check shared/worker-search-compat.mjs
+          node --test shared/worker-search-compat.test.mjs chatgpt-mcp/full-memory-tools.test.mjs deploy/check-worker-upgrade.test.mjs
+          node pi-extension/contract.test.mjs
+      - name: Fetch pinned upstream v15.0.1 contract sources
+        run: |
+          mkdir -p /tmp/claude-mem-v15-contract
+          BASE=https://raw.githubusercontent.com/thedotmack/claude-mem/0e7de4ee4671ff3e5c233b721904e9eac9d61792
+          curl -fsSL --retry 3 "$BASE/src/services/worker/http/routes/SearchRoutes.ts" -o /tmp/claude-mem-v15-contract/SearchRoutes.ts
+          curl -fsSL --retry 3 "$BASE/src/shared/progressive-search.ts" -o /tmp/claude-mem-v15-contract/progressive-search.ts
+          node deploy/verify-upstream-search-v15.mjs /tmp/claude-mem-v15-contract/SearchRoutes.ts /tmp/claude-mem-v15-contract/progressive-search.ts
+      - name: Bundle Pi for lifecycle tests in GitHub Actions
+        run: |
+          npm install --no-save --ignore-scripts --no-audit --no-fund --legacy-peer-deps esbuild@0.25.10
+          mkdir -p pi-extension/.ci
+          npx esbuild pi-extension/index.ts --bundle --platform=node --format=esm --packages=external --outfile=/tmp/pi-extension-host.mjs
+          grep -q 'from "typebox"' /tmp/pi-extension-host.mjs
+          npx esbuild pi-extension/index.ts --bundle --platform=node --format=esm --alias:typebox=./pi-extension/typebox.test-stub.mjs --outfile=pi-extension/.ci/index.mjs
+          node pi-extension/runtime.test.mjs

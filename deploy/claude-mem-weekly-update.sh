@@ -119,6 +119,15 @@ LATEST=$(npm view claude-mem version --json | node -e 'let s="";process.stdin.on
 [[ -n "$LATEST" ]]
 log "Installed=$CURRENT npm-latest=$LATEST"
 
+# Fail closed before making a backup or stopping Worker. An npm release may
+# delete an API on which a remote bridge depends. Promotion to the allowlist
+# requires CI plus deployed-client compatibility checks for that exact version.
+COMPATIBILITY_GATE=/root/apps/central-memory-bridges/deploy/check-worker-upgrade.mjs
+if ! node "$COMPATIBILITY_GATE" --installed "$CURRENT" --candidate "$LATEST"; then
+  log "COMPATIBILITY HOLD: $LATEST not approved for unattended upgrade. Keeping $CURRENT running."
+  exit 0
+fi
+
 if [[ "$CURRENT" == "$LATEST" ]]; then
   # Also repair a missing UI overlay when the official version has not changed.
   # Do not restart the Worker or touch the database on an up-to-date run.

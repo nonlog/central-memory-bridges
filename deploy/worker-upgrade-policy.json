@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "approvedVersions": [
+    "14.0.1"
+  ],
+  "rationale": "The v15.0.1 search API changed. Approve a version only after bridge CI, real worker-compatible tests, and deployed Pi/ChatGPT clients pass."
+}

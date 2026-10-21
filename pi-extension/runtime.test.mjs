@@ -6,12 +6,14 @@ process.env.CLAUDE_MEM_SEMANTIC_INJECT = "false";
 const calls = [];
 let initMode = "normal";
 let nativePromptCurrent = true;
+let workerVersion = "14.0.1";
 
 globalThis.fetch = async (input, init = {}) => {
   const url = new URL(String(input));
   const body = typeof init.body === "string" ? JSON.parse(init.body) : undefined;
   calls.push({ route: url.pathname, method: String(init.method || "GET"), body });
 
+  if (url.pathname === "/api/version") return Response.json({version:workerVersion});
   if (url.pathname === "/api/context/inject") return new Response("Useful project memory");
   if (url.pathname === "/api/sessions/native-prompt-capability") {
     return Response.json({ nativePromptId: 1 });
@@ -38,7 +40,11 @@ globalThis.fetch = async (input, init = {}) => {
       }],
     });
   }
-  if (url.pathname === "/api/search") return new Response("search index");
+  if (url.pathname === "/api/dumb-search") return Response.json({content:[{type:"text",text:"dumb-search shallow detail"}]});
+  if (url.pathname === "/api/search") return Response.json({
+    observations:[{id:7,title:"Parser fixed",project:"pi-project",narrative:"VERY_PRIVATE"}],
+    sessions:[],prompts:[],totalResults:1,
+  });
   if (url.pathname === "/api/timeline") return new Response("timeline");
   if (url.pathname === "/api/observations/batch") return Response.json({ content: [{ type: "text", text: "observation" }] });
   return Response.json({ ok: true });
@@ -232,7 +238,36 @@ assert.deepEqual(guidedCall.body, {
 });
 assert.match(guidedSearch.content[0].text, /mem-search step 2 of 3/);
 
+const dumb14 = await tools.get("dumb_search").execute("dumb-14",{query:"parser",limit:5});
+const dumb14Call = [...calls].reverse().find(call=>call.route==="/api/mem-search");
+assert.equal(dumb14Call.body.mode,"auto");
+assert.match(dumb14.content[0].text,/mem-search/);
+
+// Each invocation resolves the Worker's version, so live upgrades cannot reuse
+// a cached obsolete /api/mem-search route.
+workerVersion = "15.0.1";
+const smart15 = await tools.get("mem_search").execute("smart-15",{
+  query:"parser fix",project:"pi-project",limit:8,mode:"guided",
+});
+const smartCall = [...calls].reverse().find(call=>call.route==="/api/search");
+assert.equal(smartCall.method,"GET");
+assert.match(smart15.content[0].text,/Parser fixed/);
+assert.ok(!smart15.content[0].text.includes('VERY_PRIVATE'));
+assert.equal(smartCall.body,undefined);
+const badBefore = calls.length;
+const oldContinuation = await tools.get("mem_search").execute("old-15",{
+  mode:"guided", continuation:"ms_123456789012345678901234",selectedIds:[20],
+});
+assert.match(oldContinuation.content[0].text,/removed guided continuation/);
+assert.equal(calls.filter(call=>call.route==="/api/mem-search").length,3);
+const shallow15 = await tools.get("dumb_search").execute("dumb-15",{query:"parser",maxDetails:2});
+assert.match(shallow15.content[0].text,/dumb-search shallow detail/);
+const auto15 = await tools.get("mem_search").execute("auto-15",{query:"parser",mode:"auto",maxDetails:1});
+assert.match(auto15.content[0].text,/dumb-search shallow detail/);
+assert.equal(calls.filter(call=>call.route==="/api/dumb-search").length,2);
+
 assert.ok(tools.has("mem_search"));
+assert.ok(tools.has("dumb_search"));
 assert.ok(tools.has("mem_timeline"));
 assert.ok(tools.has("mem_get_observations"));
 assert.ok(tools.has("claude_mem_search"));

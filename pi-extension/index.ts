@@ -7,6 +7,7 @@ import crypto from "node:crypto";
 import path from "node:path";
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { workerSearchMajor, planMemorySearch, planDumbSearch, formatWorkerSearchResult, compactSmartSearchIndex } from "../shared/worker-search-compat.mjs";
 
 const WORKER = (process.env.CLAUDE_MEM_WORKER_URL || "https://claude-mem.414222.xyz").replace(/\/$/, "");
 
@@ -626,12 +627,13 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
     },
   });
 
-  // Worker 13.35+ progressive recall. This is the preferred search surface;
-  // mem_timeline and mem_get_observations remain below as compatibility tools.
+  // The Worker 14 guided workflow uses /api/mem-search; Worker 15 deleted that
+  // endpoint. Keep mem_search as a compatibility name: on 15 it provides the
+  // first Smart-search index, followed by mem_timeline and mem_get_observations.
   pi.registerTool({
     name: "mem_search",
     label: "Memory Search",
-    description: "Progressive claude-mem search. Use mode=auto for bounded index → context → selected details, or mode=guided and follow continuation/selectedIds.",
+    description: "Smart memory search. On Worker 15 use mem_search({query}) for index, then mem_timeline and mem_get_observations. mode=auto is optional shallow dumb search. On Worker 14 the guided continuation protocol still works.",
     promptSnippet: "Search memory with progressive disclosure",
     parameters: Type.Object({
       query: Type.Optional(Type.String({ minLength: 1, maxLength: 500 })),
@@ -695,18 +697,55 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
       if (params.selectedIds !== undefined) body.selectedIds = params.selectedIds;
 
       try {
+        const major = workerSearchMajor(await request("/api/version", {}, HTTP_TIMEOUT_MS));
+        const plan = planMemorySearch(major, body);
         const raw = await request(
-          "/api/mem-search",
-          { method: "POST", body: JSON.stringify(body) },
+          plan.route,
+          plan.method === "POST" ? { method: "POST", body: JSON.stringify(plan.body) } : {},
           SEARCH_TIMEOUT_MS,
         );
-        return toolResult(extractWorkerText(raw), {
+        const mcp = formatWorkerSearchResult(raw);
+        const display = plan.step === "smart-index"
+          ? compactSmartSearchIndex(raw, body) : (mcp || raw);
+        return toolResult(extractWorkerText(display), {
           source: "central-claude-mem",
           progressive: true,
           mode,
+          searchStep: plan.step,
+          ...(mcp?.isError ? { error: true } : {}),
         });
       } catch (error: any) {
         return toolResult("Memory search failed: " + error.message, { error: true });
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "dumb_search",
+    label: "Dumb Memory Search",
+    description: "Optional shallow one-call memory lookup. On Worker 15 uses /api/dumb-search; on Worker 14 falls back to legacy auto mode. Prefer Smart mem_search → mem_timeline → mem_get_observations.",
+    promptSnippet: "Optional shallow memory lookup",
+    parameters: Type.Object({
+      query: Type.String({ minLength: 1, maxLength: 500 }),
+      project: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
+      limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 20 })),
+      maxDetails: Type.Optional(Type.Integer({ minimum: 1, maximum: 5 })),
+      depthBefore: Type.Optional(Type.Integer({ minimum: 0, maximum: 3 })),
+      depthAfter: Type.Optional(Type.Integer({ minimum: 0, maximum: 3 })),
+    }),
+    async execute(_toolCallId, params) {
+      try {
+        const major = workerSearchMajor(await request("/api/version", {}, HTTP_TIMEOUT_MS));
+        const plan = planDumbSearch(major, params);
+        const raw = await request(plan.route,
+          { method: "POST", body: JSON.stringify(plan.body) }, SEARCH_TIMEOUT_MS);
+        const mcp = formatWorkerSearchResult(raw);
+        return toolResult(extractWorkerText(mcp || raw), {
+          source: "central-claude-mem", searchStep: plan.step,
+          ...(mcp?.isError ? { error: true } : {}),
+        });
+      } catch (error: any) {
+        return toolResult("Dumb search failed: " + error.message, { error: true });
       }
     },
   });
@@ -744,7 +783,7 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
   pi.registerTool({
     name: "mem_get_observations",
     label: "Memory Observations",
-    description: "Fetch full observation records for IDs found by mem_search.",
+    description: "Fetch full observation records by numeric IDs selected from Smart mem_search and mem_timeline. Summary IDs (S...) and prompt IDs (P...) are not observation IDs.",
     promptSnippet: "Fetch selected memory observations",
     parameters: Type.Object({
       ids: Type.Array(Type.Number({ minimum: 1 }), { minItems: 1, maxItems: 100 }),

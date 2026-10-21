@@ -1,5 +1,6 @@
 import * as z from 'zod/v4';
 import { EXECUTOR_AGENT_IDENTITIES, resolveMemorySource } from './agent-identity.mjs';
+import { workerSearchMajor, planMemorySearch, planDumbSearch, formatWorkerSearchResult, compactSmartSearchIndex } from '../shared/worker-search-compat.mjs';
 
 // Worker-runtime memory API only. Server-only /v1 endpoints, filesystem search,
 // host administration, and arbitrary Worker proxying are intentionally excluded.
@@ -52,6 +53,18 @@ export function registerWorkerMemoryTools(server, { worker, platform, defaultPro
   const post = (endpoint, body, timeout = 25_000) =>
     worker(endpoint, { method: 'POST', body: JSON.stringify(body) }, timeout);
   const virtualCwd = (project) => '/web-mcp/' + safeProject(project || defaultProject);
+  const searchMajor = async () => workerSearchMajor(await worker('/api/version', {}, 5_000));
+  const runSearch = async (plan) => {
+    const raw = await worker(plan.route, plan.method === 'POST'
+      ? { method: 'POST', body: JSON.stringify(plan.body) } : {}, 45_000);
+    if (plan.step === 'smart-index') return compactSmartSearchIndex(raw, {
+      query: new URL(plan.route, 'http://localhost').searchParams.get('query'),
+      limit: Number(new URL(plan.route, 'http://localhost').searchParams.get('limit')) || undefined,
+    });
+    const mcp = formatWorkerSearchResult(raw);
+    if (mcp) return { ...mcp, structuredContent: { ...raw, searchStep: plan.step } };
+    return response(raw);
+  };
 
   server.registerTool('mem_search', {
     title: 'Progressive memory search',
@@ -70,8 +83,22 @@ export function registerWorkerMemoryTools(server, { worker, platform, defaultPro
     annotations: readOnly,
   }, async (args) => {
     if (!args.query && !args.continuation) throw new Error('query or continuation required');
-    return response(await post('/api/mem-search', args, 45_000));
+    return runSearch(planMemorySearch(await searchMajor(), args));
   });
+
+  server.registerTool('dumb_search', {
+    title: 'Fast shallow memory lookup',
+    description: 'Optional one-call title-based search. Fast but shallow: use mem_search → memory_timeline → memory_get_observations for reliable recall. Worker 15 uses /api/dumb-search; Worker 14 falls back to legacy auto.',
+    inputSchema: {
+      query: z.string().min(1).max(500),
+      project: projectName.optional(),
+      limit: z.number().int().min(1).max(20).optional(),
+      maxDetails: z.number().int().min(1).max(5).optional(),
+      depthBefore: z.number().int().min(0).max(3).optional(),
+      depthAfter: z.number().int().min(0).max(3).optional(),
+    },
+    annotations: readOnly,
+  }, async (args) => runSearch(planDumbSearch(await searchMajor(), args)));
 
   server.registerTool('save_memory', {
     title: 'Save a durable memory directly',

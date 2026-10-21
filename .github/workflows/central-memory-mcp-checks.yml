@@ -5,11 +5,13 @@ on:
     branches: [master]
     paths:
       - 'chatgpt-mcp/**'
+      - 'shared/**'
       - 'deploy/apply-claude-mem-viewer-branding.mjs'
       - '.github/workflows/central-memory-mcp-checks.yml'
   pull_request:
     paths:
       - 'chatgpt-mcp/**'
+      - 'shared/**'
       - 'deploy/apply-claude-mem-viewer-branding.mjs'
       - '.github/workflows/central-memory-mcp-checks.yml'
 

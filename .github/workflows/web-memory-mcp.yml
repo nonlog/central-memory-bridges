@@ -4,6 +4,7 @@ on:
     branches: [master]
     paths:
       - 'chatgpt-mcp/**'
+      - 'shared/**'
       - 'deploy/apply-claude-mem-viewer-branding.mjs'
       - 'deploy/reapply-claude-mem-platform-ui.py'
       - 'deploy/test_platform_ui_patch.py'
@@ -11,6 +12,7 @@ on:
   pull_request:
     paths:
       - 'chatgpt-mcp/**'
+      - 'shared/**'
       - 'hermes-provider/**'
       - 'memory-admin-mcp/**'
       - 'openclaw-memory-admin/**'

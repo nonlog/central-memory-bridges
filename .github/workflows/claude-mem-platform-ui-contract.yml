@@ -6,6 +6,9 @@ on:
       - 'deploy/test_platform_ui_patch.py'
       - 'deploy/claude-mem-weekly-update.sh'
       - 'deploy/test_updater_contract.py'
+      - 'deploy/check-worker-upgrade.mjs'
+      - 'deploy/check-worker-upgrade.test.mjs'
+      - 'deploy/worker-upgrade-policy.json'
       - 'deploy/nginx-claude-mem-*.conf.example'
       - 'deploy/test_public_worker_proxy.py'
       - 'docs/REMOTE_WORKER_SURFACE.md'
@@ -16,6 +19,9 @@ on:
       - 'deploy/test_platform_ui_patch.py'
       - 'deploy/claude-mem-weekly-update.sh'
       - 'deploy/test_updater_contract.py'
+      - 'deploy/check-worker-upgrade.mjs'
+      - 'deploy/check-worker-upgrade.test.mjs'
+      - 'deploy/worker-upgrade-policy.json'
       - 'deploy/nginx-claude-mem-*.conf.example'
       - 'deploy/test_public_worker_proxy.py'
       - 'docs/REMOTE_WORKER_SURFACE.md'
@@ -36,4 +42,5 @@ jobs:
       - run: python -m unittest discover -s deploy -p 'test_platform_ui_patch.py' -v
       - run: python -m unittest discover -s deploy -p 'test_updater_contract.py' -v
       - run: python -m unittest discover -s deploy -p 'test_public_worker_proxy.py' -v
+      - run: node --test deploy/check-worker-upgrade.test.mjs
       - run: bash -n deploy/claude-mem-weekly-update.sh
