@@ -16,8 +16,9 @@ test('v15 search API is held before automatic production update', () => {
   assert.equal(r.status,78);
   assert.match(r.stderr,/COMPATIBILITY HOLD/);
 });
-test('unreviewed future minor/patch versions remain blocked', () => {
-  assert.equal(call('14.0.1','15.0.2').status, 78);
+test('reviewed 15.0.2 upgrade is approved while later versions fail closed', () => {
+  assert.equal(call('14.0.1','15.0.2').status, 0);
+  assert.equal(call('14.0.1','15.0.3').status, 78);
   assert.equal(call('14.0.1','16.0.0').status, 78);
 });
 test('unexpected semver or absent candidate fails closed', () => {
