@@ -325,7 +325,7 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
     session.observedModel = String(ctx?.model?.id || "");
   };
 
-  const selectEntry = (session: SessionState, ctx: any, user: any, prompt: string): any | undefined => {
+  const selectEntry = (session: SessionState, ctx: any, messages: any[]): { entry: any; prompt: string } | undefined => {
     try {
       if (current !== session || !sameSession(session, ctx) || typeof ctx?.sessionManager?.getBranch !== "function") return;
       const branch = ctx.sessionManager.getBranch();
@@ -333,17 +333,17 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
       const entry = [...branch].reverse().find(
         (item: any) => item?.type === "message" && item?.message?.role === "user",
       );
-      if (
-        !entry ||
-        typeof entry.id !== "string" ||
-        !/^[^\s\x00-\x1f\x7f]{1,256}$/.test(entry.id) ||
-        !user ||
-        typeof user.timestamp !== "number" ||
-        !Number.isFinite(user.timestamp) ||
-        entry.message?.timestamp !== user.timestamp ||
-        extractTextContent(entry.message?.content) !== prompt
-      ) return;
-      return entry;
+      if (!entry || typeof entry.id !== "string" || !/^[^\s\x00-\x1f\x7f]{1,256}$/.test(entry.id)) return;
+      const timestamp = entry.message?.timestamp;
+      if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) return;
+      // The stored Pi branch is authoritative. Request-time extensions may add
+      // another user message or append context to the real user's text.
+      const prompt = extractTextContent(entry.message?.content);
+      const user = [...messages].reverse().find((message: any) =>
+        message?.role === "user" && message.timestamp === timestamp &&
+        extractTextContent(message.content).startsWith(prompt));
+      if (!user) return;
+      return { entry, prompt };
     } catch {
       return;
     }
@@ -414,22 +414,22 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
     const messages = event?.messages;
     if (!session) return;
 
-    if (!Array.isArray(messages) || messages[0]?.role !== "system" || typeof messages[0]?.content !== "string") {
+    const systemIndex = Array.isArray(messages)
+      ? messages.findIndex((message: any) => message?.role === "system" && typeof message.content === "string") : -1;
+    if (systemIndex < 0) {
       disarmTurn(session);
       return;
     }
-
-    const user = [...messages].reverse().find((message: any) => message?.role === "user");
-    const prompt = extractTextContent(user?.content);
-    const baseSystem = messages[0].content;
+    const baseSystem = messages[systemIndex].content;
 
     await enqueue(session, ctx, async () => {
       try {
-        const entry = selectEntry(session, ctx, user, prompt);
-        if (!entry || !prompt.trim()) {
+        const selected = selectEntry(session, ctx, messages);
+        if (!selected || !selected.prompt.trim()) {
           disarmTurn(session);
           return;
         }
+        const { entry, prompt } = selected;
 
         if (session.entryId !== entry.id) {
           disarmTurn(session);
@@ -445,7 +445,7 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
             throw new Error("Worker does not support native Pi prompt identity.");
           }
 
-          if (selectEntry(session, ctx, user, prompt)?.id !== entry.id) {
+          if (selectEntry(session, ctx, messages)?.entry.id !== entry.id) {
             disarmTurn(session, true);
             return;
           }
@@ -467,7 +467,7 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
             HTTP_TIMEOUT_MS,
           );
 
-          if (selectEntry(session, ctx, user, prompt)?.id !== entry.id) {
+          if (selectEntry(session, ctx, messages)?.entry.id !== entry.id) {
             disarmTurn(session, true);
             return;
           }
@@ -502,16 +502,12 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
     const additionalContext = blocks.join("\n\n").trim();
     if (!additionalContext) return;
 
-    const [head, ...tail] = messages;
-    return {
-      messages: [
-        {
-          ...head,
-          content: baseSystem + "\n\n<claude-mem-context>\n" + additionalContext + "\n</claude-mem-context>",
-        },
-        ...tail,
-      ],
+    const injected = [...messages];
+    injected[systemIndex] = {
+      ...messages[systemIndex],
+      content: baseSystem + "\n\n<claude-mem-context>\n" + additionalContext + "\n</claude-mem-context>",
     };
+    return { messages: injected };
   });
 
   on("tool_result", (event: any, ctx: any) => {

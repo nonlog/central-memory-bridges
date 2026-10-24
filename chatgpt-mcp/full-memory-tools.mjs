@@ -68,7 +68,7 @@ export function registerWorkerMemoryTools(server, { worker, platform, defaultPro
 
   server.registerTool('mem_search', {
     title: 'Progressive memory search',
-    description: 'Official 3-step progressive search; use mode=guided to inspect index, context, and selected records, or mode=auto for a bounded full search. Pass opaque continuation and selectedIds from previous results.',
+    description: 'Search central memory. Worker 15+: mem_search({query}) returns a compact index; inspect matches with memory_timeline and memory_get_observations. Worker 14 only: mode=guided supports opaque continuation and selectedIds. mode=auto runs a shallow one-call search.',
     inputSchema: {
       mode: z.enum(['guided', 'auto']).optional(),
       query: z.string().min(1).max(500).optional(),
@@ -132,7 +132,7 @@ export function registerWorkerMemoryTools(server, { worker, platform, defaultPro
       dateEnd: z.string().max(50).optional(), limit: z.number().int().min(1).max(100).optional(),
       offset: z.number().int().min(0).optional(), orderBy: z.enum(['date_desc', 'date_asc']).optional(),
     }, annotations: readOnly,
-  }, async (args) => response(await get('/api/search', args)));
+  }, async (args) => response(await get('/api/search', { ...args, format: 'json' })));
 
   server.registerTool('memory_timeline', {
     title: 'Memory timeline',

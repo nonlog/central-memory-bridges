@@ -11,7 +11,7 @@ let workerVersion = "14.0.1";
 globalThis.fetch = async (input, init = {}) => {
   const url = new URL(String(input));
   const body = typeof init.body === "string" ? JSON.parse(init.body) : undefined;
-  calls.push({ route: url.pathname, method: String(init.method || "GET"), body });
+  calls.push({ route: url.pathname, query: url.searchParams.toString(), method: String(init.method || "GET"), body });
 
   if (url.pathname === "/api/version") return Response.json({version:workerVersion});
   if (url.pathname === "/api/context/inject") return new Response("Useful project memory");
@@ -41,10 +41,12 @@ globalThis.fetch = async (input, init = {}) => {
     });
   }
   if (url.pathname === "/api/dumb-search") return Response.json({content:[{type:"text",text:"dumb-search shallow detail"}]});
-  if (url.pathname === "/api/search") return Response.json({
-    observations:[{id:7,title:"Parser fixed",project:"pi-project",narrative:"VERY_PRIVATE"}],
-    sessions:[],prompts:[],totalResults:1,
-  });
+  if (url.pathname === "/api/search") return Response.json(
+    url.searchParams.get("format") === "json" ? {
+      observations:[{id:7,title:"Parser fixed",project:"pi-project",narrative:"VERY_PRIVATE"}],
+      sessions:[],prompts:[],totalResults:1,
+    } : {content:[{type:"text",text:"MCP default response"}]}
+  );
   if (url.pathname === "/api/timeline") return new Response("timeline");
   if (url.pathname === "/api/observations/batch") return Response.json({ content: [{ type: "text", text: "observation" }] });
   return Response.json({ ok: true });
@@ -78,7 +80,7 @@ const ctx = {
 
 const emit = async (name, event = {}) => handlers.get(name)?.(event, ctx);
 
-const ask = async (text, id) => {
+const ask = async (text, id, { leading = [], trailing = [], appendedText = "" } = {}) => {
   await emit("before_agent_start", { prompt: text });
   const user = {
     role: "user",
@@ -86,7 +88,10 @@ const ask = async (text, id) => {
     timestamp: ++timestamp,
   };
   branch.push({ type: "message", id, message: user });
-  const messages = [{ role: "system", content: "Base system", toolsAdded: [{ name: "read" }] }, user];
+  const requestUser = appendedText ? {
+    ...user, content: [{type:"text",text:text + appendedText}],
+  } : user;
+  const messages = [...leading, { role: "system", content: "Base system", toolsAdded: [{ name: "read" }] }, requestUser, ...trailing];
   return {
     user,
     result: await emit("context_with_system", { messages }),
@@ -143,6 +148,20 @@ assert.deepEqual(
   calls.filter((call) => call.route === "/api/sessions/init").map((call) => call.body.nativePromptId),
   ["entry-a", "entry-b"],
 );
+
+// Multiple Pi extensions may prepend a message ahead of System, append extra
+// text to the persisted user message, or append another synthetic user message.
+const customPrefix = {role:"assistant",content:"extension prefix"};
+const syntheticTail = {role:"user",content:[{type:"text",text:"extension context"}],timestamp:99999};
+const multi = await ask("Fix combined extension hooks", "entry-multi", {
+  leading:[customPrefix], appendedText:"\nExtension-only extra context", trailing:[syntheticTail],
+});
+const multiInit = calls.find(call=>call.route==="/api/sessions/init" && call.body.nativePromptId==="entry-multi");
+assert.equal(multiInit.body.prompt,"Fix combined extension hooks");
+assert.equal(multi.result.messages[0],customPrefix);
+assert.match(multi.result.messages[1].content,/Useful project memory/);
+assert.match(multi.result.messages[2].content[0].text,/Extension-only extra context/);
+assert.equal(multi.result.messages[3],syntheticTail);
 
 // Worker privacy/project admission must block memory injection and all capture.
 initMode = "private";
@@ -251,6 +270,7 @@ const smart15 = await tools.get("mem_search").execute("smart-15",{
 });
 const smartCall = [...calls].reverse().find(call=>call.route==="/api/search");
 assert.equal(smartCall.method,"GET");
+assert.equal(new URLSearchParams(smartCall.query).get("format"),"json");
 assert.match(smart15.content[0].text,/Parser fixed/);
 assert.ok(!smart15.content[0].text.includes('VERY_PRIVATE'));
 assert.equal(smartCall.body,undefined);

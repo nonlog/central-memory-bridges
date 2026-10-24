@@ -17,7 +17,7 @@ export function workerSearchMajor(versionResponse) {
     ? versionResponse : versionResponse?.version;
   const match = typeof value === 'string' ? /^(\d+)\.\d+\.\d+(?:[-+].*)?$/.exec(value.trim()) : null;
   const major = match ? Number(match[1]) : NaN;
-  if (!Number.isSafeInteger(major) || major < 14) {
+  if (!Number.isSafeInteger(major) || (major !== 14 && major !== 15)) {
     throw new Error('Unknown central Worker version; refusing to guess the search API contract.');
   }
   return major;
@@ -71,6 +71,9 @@ export function planMemorySearch(major, args) {
   }
   const query = new URLSearchParams();
   query.set('query', body.query);
+  // The official v15 endpoint defaults to MCP content; the compact index
+  // needs structured result rows and must request them explicitly.
+  query.set('format', 'json');
   if (body.project !== undefined) query.set('project', body.project);
   if (body.limit !== undefined) query.set('limit', String(body.limit));
   return { route: '/api/search?' + query, method: 'GET', step: 'smart-index' };
@@ -112,7 +115,8 @@ export function compactSmartSearchIndex(raw, args = {}) {
         id: source.prefix + row.id,
         kind: source.kind,
         project: typeof row.project === 'string' ? row.project.slice(0,96) : '',
-        title: String(row.title || row.request || row.prompt_text || 'Untitled').slice(0,160),
+        // Search indexes must not expose session requests or raw user prompts.
+        title: String(row.title || (source.kind === 'summary' ? 'Session summary #' : source.kind === 'prompt' ? 'Prompt #' : 'Observation #') + (!row.title ? row.id : '')).slice(0,160),
         ...(typeof row.type === 'string' ? {type:row.type.slice(0,64)} : {}),
         ...(Number.isSafeInteger(row.created_at_epoch) ? {createdAt:row.created_at_epoch} : {}),
       });

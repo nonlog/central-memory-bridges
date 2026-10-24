@@ -5,6 +5,8 @@ import { workerSearchMajor, planMemorySearch, planDumbSearch, formatWorkerSearch
 test('accepts known worker versions; fails closed on absent/invalid versions', () => {
   assert.equal(workerSearchMajor({version:'14.0.1'}),14);
   assert.equal(workerSearchMajor({version:'15.0.1'}),15);
+  assert.equal(workerSearchMajor({version:'15.0.2'}),15);
+  assert.throws(()=>workerSearchMajor({version:'16.0.0'}),/Unknown central Worker version/);
   assert.throws(()=>workerSearchMajor({status:'ok'}),/Unknown central Worker version/);
   assert.throws(()=>workerSearchMajor({version:'v15.0.1'}),/Unknown central Worker version/);
 });
@@ -21,7 +23,7 @@ test('14.x retains guided continuation and auto workflow', () => {
 
 test('15.x guided returns Smart index; auto uses new optional dumb endpoint', () => {
   assert.deepEqual(planMemorySearch(15,{query:'parser',project:'proj a',limit:8,mode:'guided'}),{
-    route:'/api/search?query=parser&project=proj+a&limit=8',method:'GET',step:'smart-index'
+    route:'/api/search?query=parser&format=json&project=proj+a&limit=8',method:'GET',step:'smart-index'
   });
   assert.deepEqual(planMemorySearch(15,{mode:'auto',query:'parser',depthBefore:1,maxDetails:2}),{
     route:'/api/dumb-search',method:'POST',
@@ -56,6 +58,9 @@ test('Smart index projects only safe metadata, never raw facts/narratives or pro
   const output=compactSmartSearchIndex(raw,{query:'bug',limit:3});
   assert.deepEqual(output.structuredContent.index.map(x=>x.id),['10','S8','P2']);
   assert.equal(output.structuredContent.index[1].kind,'summary');
+  assert.equal(output.structuredContent.index[1].title,'Session summary #8');
+  assert.equal(output.structuredContent.index[2].title,'Prompt #2');
+  assert.ok(!JSON.stringify(output).includes('private prompt contents'));
   assert.ok(!JSON.stringify(output).includes('VERY_PRIVATE_CONTENT'));
   assert.match(output.content[0].text,/memory_timeline/);
   assert.throws(()=>compactSmartSearchIndex({observations:[]}),/response changed/);

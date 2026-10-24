@@ -8,10 +8,17 @@ function harness(scopes = ['memory:read', 'memory:write'], platform = 'claude-we
     worker: async (path, opts = {}) => {
       if (path === '/api/version') return { version };
       calls.push({ path, method: opts.method || 'GET', body: opts.body ? JSON.parse(opts.body) : null });
-      if (version.startsWith('15.') && path.startsWith('/api/search?')) return {
-        observations:[{id:42,title:'Parser repaired',project:'my-project',narrative:'PRIVATE_FACTS_NOT_FOR_INDEX'}],
-        sessions:[], prompts:[], totalResults:1,
-      };
+      if (version.startsWith('15.') && path.startsWith('/api/search?')) {
+        // Reproduce the official API: without format=json, the response is
+        // MCP content, not the row arrays expected by compactSmartSearchIndex.
+        if (new URL(path, 'http://worker').searchParams.get('format') !== 'json') {
+          return {content:[{type:'text',text:'default MCP-formatted search result'}]};
+        }
+        return {
+          observations:[{id:42,title:'Parser repaired',project:'my-project',narrative:'PRIVATE_FACTS_NOT_FOR_INDEX'}],
+          sessions:[], prompts:[], totalResults:1,
+        };
+      }
       return { ok: true, path };
     },
     platform, defaultProject: platform, scopes,
@@ -138,7 +145,7 @@ test('Worker 15 Smart search starts with GET index; optional auto/dumb use new P
   const index = await h.call('mem_search', {query:'parser bugs', project:'my-project', mode:'guided',limit:5});
   assert.equal(index.structuredContent.index[0].id,'42');
   assert.ok(!JSON.stringify(index).includes('PRIVATE_FACTS_NOT_FOR_INDEX'));
-  assert.equal(h.calls[0].path, '/api/search?query=parser+bugs&project=my-project&limit=5');
+  assert.equal(h.calls[0].path, '/api/search?query=parser+bugs&format=json&project=my-project&limit=5');
   assert.equal(h.calls[0].method, 'GET');
   await h.call('mem_search', {query:'parser bugs',mode:'auto',maxDetails:2});
   assert.equal(h.calls[1].path,'/api/dumb-search');
@@ -150,6 +157,8 @@ test('Worker 15 Smart search starts with GET index; optional auto/dumb use new P
   await h.call('memory_get_observations',{ids:[42]});
   assert.equal(h.calls[3].path,'/api/timeline?anchor=42');
   assert.equal(h.calls[4].path,'/api/observations/batch');
+  await h.call('memory_search_advanced',{query:'parser bugs'});
+  assert.equal(new URL(h.calls[5].path,'http://worker').searchParams.get('format'),'json');
 });
 
 test('Worker 15 rejects obsolete continuation and selectedIds without hitting Worker search', async () => {

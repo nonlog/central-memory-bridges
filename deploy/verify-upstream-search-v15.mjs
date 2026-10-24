@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-const [routesPath, progressivePath] = process.argv.slice(2);
-if (!routesPath || !progressivePath) throw new Error('Provide SearchRoutes.ts and progressive-search.ts from pinned v15.0.1 tag');
+const [routesPath, progressivePath, searchManagerPath] = process.argv.slice(2);
+if (!routesPath || !progressivePath || !searchManagerPath) throw new Error('Provide SearchRoutes.ts, progressive-search.ts and SearchManager.ts from the pinned v15.0.2 tag');
 const routes = readFileSync(routesPath, 'utf8');
 const contract = readFileSync(progressivePath, 'utf8');
+const searchManager = readFileSync(searchManagerPath, 'utf8');
 // Compare to the *released* official API rather than guessing from changelog.
 assert.match(routes, /app\.get\('\/api\/search'/, 'v15 smart index exists');
 assert.match(routes, /app\.post\('\/api\/dumb-search'/, 'v15 shallow endpoint exists');
@@ -14,4 +15,6 @@ for (const name of ['query', 'project', 'limit', 'maxDetails', 'depthBefore', 'd
   assert.match(contract, new RegExp('\\b' + name + '\\?:'), name + ' in v15 input');
 }
 assert.doesNotMatch(contract.split('export interface ProgressiveSearchInput {')[1].split('}')[0], /mode\?|continuation\?|selectedIds\?/, 'v15 no guided continuation');
-console.log('Pinned v15.0.1 Worker search route/schema assertions passed');
+assert.match(routes, /this\.searchManager\.search\(this\.searchArgsFromRequest\(req\)/, 'query including format reaches SearchManager');
+assert.match(searchManager, /if \(format === 'json'\)/, 'v15 requires explicit format=json for structured index arrays');
+console.log('Pinned v15.0.2 Worker search route/schema and format=json assertions passed');

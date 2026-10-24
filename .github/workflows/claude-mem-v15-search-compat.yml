@@ -32,13 +32,14 @@ jobs:
           node --check shared/worker-search-compat.mjs
           node --test shared/worker-search-compat.test.mjs chatgpt-mcp/full-memory-tools.test.mjs deploy/check-worker-upgrade.test.mjs
           node pi-extension/contract.test.mjs
-      - name: Fetch pinned upstream v15.0.1 contract sources
+      - name: Fetch pinned upstream v15.0.2 contract sources
         run: |
           mkdir -p /tmp/claude-mem-v15-contract
-          BASE=https://raw.githubusercontent.com/thedotmack/claude-mem/0e7de4ee4671ff3e5c233b721904e9eac9d61792
+          BASE=https://raw.githubusercontent.com/thedotmack/claude-mem/e7173346f16bb3ab28cb4de11a63822895217d4c
           curl -fsSL --retry 3 "$BASE/src/services/worker/http/routes/SearchRoutes.ts" -o /tmp/claude-mem-v15-contract/SearchRoutes.ts
           curl -fsSL --retry 3 "$BASE/src/shared/progressive-search.ts" -o /tmp/claude-mem-v15-contract/progressive-search.ts
-          node deploy/verify-upstream-search-v15.mjs /tmp/claude-mem-v15-contract/SearchRoutes.ts /tmp/claude-mem-v15-contract/progressive-search.ts
+          curl -fsSL --retry 3 "$BASE/src/services/worker/SearchManager.ts" -o /tmp/claude-mem-v15-contract/SearchManager.ts
+          node deploy/verify-upstream-search-v15.mjs /tmp/claude-mem-v15-contract/SearchRoutes.ts /tmp/claude-mem-v15-contract/progressive-search.ts /tmp/claude-mem-v15-contract/SearchManager.ts
       - name: Bundle Pi for lifecycle tests in GitHub Actions
         run: |
           npm install --no-save --ignore-scripts --no-audit --no-fund --legacy-peer-deps esbuild@0.25.10
