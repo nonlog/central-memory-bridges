@@ -63,7 +63,7 @@ const server = new McpServer(
   { name: 'central-memory-admin', version: '0.1.0' },
   {
     instructions: [
-      'This MCP adds only destructive administration for an existing claude-mem integration.',
+      'This MCP adds read-only deletion previews and strictly confirmed destructive administration for an existing claude-mem integration.',
       'Use the official claude-mem search/recent/timeline tools first and delete only exact numeric IDs the user intends to remove.',
       'Never guess IDs and never translate a fuzzy request into bulk deletion without first enumerating exact records.',
     ].join(' '),

@@ -2,7 +2,8 @@
   "schemaVersion": 1,
   "approvedVersions": [
     "14.0.1",
-    "15.0.2"
+    "15.0.2",
+    "15.1.0"
   ],
-  "rationale": "v15.0.2 approved after official pinned search format=json route/schema verification, ChatGPT/Pi compatibility fixes, and passing GitHub Actions bridge regression. Future releases remain gated."
+  "rationale": "v15.1.0 approved only after pinned upstream API and real React My Work npm-bundle tests, staged memory deletion contract checks, and passing GitHub Actions. Future releases remain gated."
 }

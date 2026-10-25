@@ -32,10 +32,10 @@ jobs:
           node --check shared/worker-search-compat.mjs
           node --test shared/worker-search-compat.test.mjs chatgpt-mcp/full-memory-tools.test.mjs deploy/check-worker-upgrade.test.mjs
           node pi-extension/contract.test.mjs
-      - name: Fetch pinned upstream v15.0.2 contract sources
+      - name: Fetch pinned upstream v15.1.0 contract sources
         run: |
           mkdir -p /tmp/claude-mem-v15-contract
-          BASE=https://raw.githubusercontent.com/thedotmack/claude-mem/e7173346f16bb3ab28cb4de11a63822895217d4c
+          BASE=https://raw.githubusercontent.com/thedotmack/claude-mem/0585b07c6a8b02e09d7ce27c09c7422f03a98a07
           curl -fsSL --retry 3 "$BASE/src/services/worker/http/routes/SearchRoutes.ts" -o /tmp/claude-mem-v15-contract/SearchRoutes.ts
           curl -fsSL --retry 3 "$BASE/src/shared/progressive-search.ts" -o /tmp/claude-mem-v15-contract/progressive-search.ts
           curl -fsSL --retry 3 "$BASE/src/services/worker/SearchManager.ts" -o /tmp/claude-mem-v15-contract/SearchManager.ts

@@ -94,7 +94,7 @@ export default defineToolPlugin({
       name: 'claude_mem_forget',
       label: 'Central Memory Forget',
       description:
-        'Delete exact claude-mem observation, summary, or prompt IDs through the Worker official DELETE routes. First identify exact IDs with the existing claude-mem tools; never guess IDs or perform fuzzy deletion.',
+        'Delete only after claude_mem_preview_delete and explicit user approval. Requires matching one-use previewToken, confirmationText and confirm=true; rejects unreviewed or changed IDs.',
       optional: true,
       parameters: Type.Object(
         {
