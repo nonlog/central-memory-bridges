@@ -1,6 +1,6 @@
 # Central Memory Admin MCP
 
-A deliberately small stdio MCP server that adds one destructive tool, `claude_mem_forget`, alongside an existing official `claude-mem` integration.
+A deliberately small stdio MCP server that adds a two-stage `claude_mem_preview_delete` / `claude_mem_forget` workflow, alongside an existing official `claude-mem` integration.
 
 It is intended for Claude Code and Codex. It does **not** replace or patch the official `claude-mem` plugin/hooks/MCP; those integrations continue to own recall, capture, search, and summarization.
 
@@ -26,7 +26,7 @@ command: node
 args: [/absolute/path/to/central-memory-bridges/memory-admin-mcp/server.mjs]
 ```
 
-The tool accepts exact record identifiers only:
+First call `claude_mem_preview_delete` with exact record identifiers:
 
 ```json
 {
@@ -41,3 +41,5 @@ The tool accepts exact record identifiers only:
 Always identify the records with the normal `claude-mem` search/recent/timeline tools before deleting them. Do not guess IDs and do not treat free-text deletion requests as permission for fuzzy bulk deletion.
 
 See [`../docs/MEMORY_ADMIN.md`](../docs/MEMORY_ADMIN.md) for architecture, client setup, limitations, and security behavior.
+
+Then show the exact preview to the user. Only after explicit approval, call `claude_mem_forget` with the same `items` and returned `previewToken` and `confirmationText`, plus `confirm: true`. Tokens expire after five minutes, are one-use, and are bound to the exact Worker and IDs. No free-text or bulk deletion is allowed.

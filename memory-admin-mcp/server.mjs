@@ -4,6 +4,7 @@ import path from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+import { createDeleteCoordinator } from '../shared/confirmed-delete.mjs';
 
 const DEFAULT_URL_FILE = path.join(os.homedir(), '.central-memory', 'worker-url');
 const WORKER_URL_FILE = process.env.CLAUDE_MEM_WORKER_URL_FILE || DEFAULT_URL_FILE;
@@ -24,15 +25,15 @@ function resolveWorkerUrl() {
   );
 }
 
-async function deleteRecord(type, id) {
-  const workerUrl = resolveWorkerUrl();
+async function requestRecord(workerUrl, type, id, method = 'GET', signal) {
+  const routeType = method === 'GET' && type === 'summary' ? 'session' : type;
   const headers = { accept: 'application/json' };
   if (WORKER_TOKEN) headers.authorization = `Bearer ${WORKER_TOKEN}`;
 
-  const response = await fetch(`${workerUrl}/api/${type}/${id}`, {
-    method: 'DELETE',
-    headers,
-    signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
+  const timeout = AbortSignal.timeout(HTTP_TIMEOUT_MS);
+  const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
+  const response = await fetch(`${workerUrl}/api/${routeType}/${id}`, {
+    method, headers, signal: requestSignal,
   });
   const text = await response.text();
   let body = text;
@@ -47,6 +48,11 @@ async function deleteRecord(type, id) {
 
   return body;
 }
+
+const coordinator = createDeleteCoordinator({
+  readRecord: (url, type, id, signal) => requestRecord(url, type, id, 'GET', signal),
+  deleteRecord: (url, type, id, signal) => requestRecord(url, type, id, 'DELETE', signal),
+});
 
 const itemSchema = z.object({
   type: z.enum(['observation', 'summary', 'prompt']),
@@ -65,13 +71,30 @@ const server = new McpServer(
 );
 
 server.registerTool(
+  'claude_mem_preview_delete',
+  {
+    title: 'Preview Central Memory Deletion',
+    description: 'Read exact existing records and generate a short-lived, one-use deletion receipt. Never deletes anything; show the listed IDs to the user and obtain explicit approval.',
+    inputSchema: { items: z.array(itemSchema).min(1).max(50) },
+    annotations: { readOnlyHint:true, destructiveHint:false, idempotentHint:false, openWorldHint:false },
+  },
+  async ({items}) => {
+    const result = await coordinator.preview({items,workerUrl:resolveWorkerUrl()});
+    return {content:[{type:'text',text:JSON.stringify(result,null,2)}],structuredContent:result};
+  },
+);
+
+server.registerTool(
   'claude_mem_forget',
   {
     title: 'Central Memory Forget',
     description:
-      'Delete exact claude-mem observation, summary, or prompt IDs through the Worker official DELETE routes. First identify exact IDs with the existing claude-mem tools; never guess IDs or perform fuzzy deletion.',
+      'Delete previously previewed exact record IDs only. Require a matching unexpired one-use previewToken, confirmationText, confirm=true, and explicit user approval before invoking this destructive operation.',
     inputSchema: {
       items: z.array(itemSchema).min(1).max(50),
+      previewToken: z.string().min(32).max(128),
+      confirmationText: z.string(),
+      confirm: z.literal(true),
     },
     annotations: {
       readOnlyHint: false,
@@ -80,41 +103,9 @@ server.registerTool(
       openWorldHint: false,
     },
   },
-  async ({ items }) => {
-    const unique = [];
-    const seen = new Set();
-    for (const item of items) {
-      const key = `${item.type}:${item.id}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      unique.push(item);
-    }
-
-    const deleted = [];
-    const failed = [];
-    for (const item of unique) {
-      try {
-        const result = await deleteRecord(item.type, item.id);
-        deleted.push({ type: item.type, id: item.id, result });
-      } catch (error) {
-        failed.push({
-          type: item.type,
-          id: item.id,
-          error: String(error?.message || error),
-        });
-      }
-    }
-
-    const result = {
-      ok: failed.length === 0,
-      deleted: deleted.map(({ type, id }) => ({ type, id })),
-      failed,
-    };
-
-    return {
-      content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-      structuredContent: result,
-    };
+  async ({items, previewToken, confirmationText, confirm}) => {
+    const result = await coordinator.forget({items,previewToken,confirmationText,confirm,workerUrl:resolveWorkerUrl()});
+    return {content:[{type:'text',text:JSON.stringify(result,null,2)}],structuredContent:result};
   },
 );
 

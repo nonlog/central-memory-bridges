@@ -1,5 +1,6 @@
 import { Type } from 'typebox';
 import { defineToolPlugin } from 'openclaw/plugin-sdk/tool-plugin';
+import { createDeleteCoordinator } from './confirmed-delete.mjs';
 
 const HTTP_TIMEOUT_MS = 12_000;
 
@@ -13,15 +14,16 @@ function resolveWorkerUrl(config) {
   return 'http://127.0.0.1:37777';
 }
 
-async function deleteRecord(workerUrl, type, id, signal) {
+async function requestRecord(workerUrl, type, id, signal, method = 'GET') {
+  const routeType = method === 'GET' && type === 'summary' ? 'session' : type;
   const headers = { accept: 'application/json' };
   const token = String(process.env.CLAUDE_MEM_WORKER_TOKEN || '').trim();
   if (token) headers.authorization = `Bearer ${token}`;
 
   const timeoutSignal = AbortSignal.timeout(HTTP_TIMEOUT_MS);
   const requestSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
-  const response = await fetch(`${workerUrl}/api/${type}/${id}`, {
-    method: 'DELETE',
+  const response = await fetch(`${workerUrl}/api/${routeType}/${id}`, {
+    method,
     headers,
     signal: requestSignal,
   });
@@ -39,6 +41,11 @@ async function deleteRecord(workerUrl, type, id, signal) {
 
   return body;
 }
+
+const coordinator = createDeleteCoordinator({
+  readRecord: (url,type,id,signal) => requestRecord(url,type,id,signal,'GET'),
+  deleteRecord: (url,type,id,signal) => requestRecord(url,type,id,signal,'DELETE'),
+});
 
 const configSchema = Type.Object(
   {
@@ -73,6 +80,17 @@ export default defineToolPlugin({
   configSchema,
   tools: (tool) => [
     tool({
+      name: 'claude_mem_preview_delete',
+      label: 'Preview Central Memory Deletion',
+      description: 'Read and preview exact record IDs without deletion. Show the result and obtain explicit user approval before using claude_mem_forget.',
+      optional: true,
+      parameters: Type.Object({items: Type.Array(itemSchema, {minItems:1,maxItems:50})}, {additionalProperties:false}),
+      async execute({items}, config, context) {
+        context.signal?.throwIfAborted();
+        return coordinator.preview({items, workerUrl:resolveWorkerUrl(config), signal:context.signal});
+      },
+    }),
+    tool({
       name: 'claude_mem_forget',
       label: 'Central Memory Forget',
       description:
@@ -81,42 +99,15 @@ export default defineToolPlugin({
       parameters: Type.Object(
         {
           items: Type.Array(itemSchema, { minItems: 1, maxItems: 50 }),
+          previewToken: Type.String({minLength:32,maxLength:128}),
+          confirmationText: Type.String(),
+          confirm: Type.Literal(true),
         },
         { additionalProperties: false },
       ),
-      async execute({ items }, config, context) {
+      async execute({items,previewToken,confirmationText,confirm}, config, context) {
         context.signal?.throwIfAborted();
-        const workerUrl = resolveWorkerUrl(config);
-        const unique = [];
-        const seen = new Set();
-        for (const item of items) {
-          const key = `${item.type}:${item.id}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
-          unique.push(item);
-        }
-
-        const deleted = [];
-        const failed = [];
-        for (const item of unique) {
-          context.signal?.throwIfAborted();
-          try {
-            await deleteRecord(workerUrl, item.type, item.id, context.signal);
-            deleted.push({ type: item.type, id: item.id });
-          } catch (error) {
-            failed.push({
-              type: item.type,
-              id: item.id,
-              error: String(error?.message || error),
-            });
-          }
-        }
-
-        return {
-          ok: failed.length === 0,
-          deleted,
-          failed,
-        };
+        return coordinator.forget({items,previewToken,confirmationText,confirm,workerUrl:resolveWorkerUrl(config),signal:context.signal});
       },
     }),
   ],

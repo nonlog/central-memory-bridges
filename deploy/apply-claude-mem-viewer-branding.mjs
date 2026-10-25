@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
+import { findReactBundles, updateReactBundle } from './react-mywork-compat.mjs';
 
 const GEMINI_ICON_URL = 'https://commons.wikimedia.org/wiki/Special:Redirect/file/Google_Gemini_icon_2025.svg';
 const GEMINI_ICON_NAME = 'gemini-icon.svg';
@@ -658,8 +659,9 @@ const files = relativeFiles
 const workViews = relativeWorkViews
   .map(relativePath => path.join(rootPath, relativePath))
   .filter(filePath => fs.existsSync(filePath));
+const reactBundles = findReactBundles(rootPath);
 
-if (files.length === 0 && workViews.length === 0) {
+if (files.length === 0 && workViews.length === 0 && reactBundles.length === 0) {
   console.error(`No claude-mem Viewer or My Work UI found under: ${rootPath}`);
   process.exit(1);
 }
@@ -679,6 +681,10 @@ if (check) {
       console.error(`OUTDATED_OR_MISSING ${viewModel}: ${error.message}`);
     }
   }
+  for (const bundle of reactBundles) {
+    try { ok = updateReactBundle(bundle, path.join(SCRIPT_DIR, 'agent-icons'), true) && ok; }
+    catch (error) { ok = false; console.error(`OUTDATED_OR_MISSING ${bundle}: ${error.message}`); }
+  }
   process.exit(ok ? 0 : 1);
 }
 
@@ -696,5 +702,6 @@ for (const { relativePath, filePath } of files) {
   console.log(`PATCHED ${relativePath}`);
 }
 for (const viewModel of workViews) updateWorkView(viewModel, false);
+for (const bundle of reactBundles) updateReactBundle(bundle, path.join(SCRIPT_DIR, 'agent-icons'), false);
 
 console.log('Platform source icon overlays applied to Viewer and My Work. Native upstream icon mappings are preserved.');

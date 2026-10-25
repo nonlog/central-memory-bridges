@@ -2,6 +2,10 @@ name: Claude-mem Viewer contract
 on:
   push:
     paths:
+      - 'deploy/apply-claude-mem-viewer-branding.mjs'
+      - 'deploy/react-mywork-compat.mjs'
+      - 'deploy/agent-icons/**'
+      - 'tests/work-view-branding.test.mjs'
       - 'deploy/reapply-claude-mem-platform-ui.py'
       - 'deploy/test_platform_ui_patch.py'
       - 'deploy/claude-mem-weekly-update.sh'
@@ -15,6 +19,10 @@ on:
       - '.github/workflows/claude-mem-platform-ui-contract.yml'
   pull_request:
     paths:
+      - 'deploy/apply-claude-mem-viewer-branding.mjs'
+      - 'deploy/react-mywork-compat.mjs'
+      - 'deploy/agent-icons/**'
+      - 'tests/work-view-branding.test.mjs'
       - 'deploy/reapply-claude-mem-platform-ui.py'
       - 'deploy/test_platform_ui_patch.py'
       - 'deploy/claude-mem-weekly-update.sh'
@@ -44,3 +52,23 @@ jobs:
       - run: python -m unittest discover -s deploy -p 'test_public_worker_proxy.py' -v
       - run: node --test deploy/check-worker-upgrade.test.mjs
       - run: bash -n deploy/claude-mem-weekly-update.sh
+      - name: Test classic and React My Work branding
+        run: node --test tests/work-view-branding.test.mjs
+      - name: Validate official v15.1.0 packaged React bundle
+        run: |
+          scratch=$(mktemp -d)
+          npm pack claude-mem@15.1.0 --silent --pack-destination "$scratch"
+          tar -xzf "$scratch/claude-mem-15.1.0.tgz" -C "$scratch" package/plugin/ui/work-view package/plugin/ui/viewer.html
+          ROOT="$scratch/package"
+          if CLAUDE_MEM_BRANDING_NO_ICON_DOWNLOAD=1 node deploy/apply-claude-mem-viewer-branding.mjs --root "$ROOT" --check; then
+            echo "Unpatched upstream bundle unexpectedly passed"; exit 1
+          fi
+          CLAUDE_MEM_BRANDING_NO_ICON_DOWNLOAD=1 node deploy/apply-claude-mem-viewer-branding.mjs --root "$ROOT"
+          node deploy/apply-claude-mem-viewer-branding.mjs --root "$ROOT" --check
+          js=$(find "$ROOT/plugin/ui/work-view/assets" -maxdepth 1 -name 'index-*.js' -print -quit)
+          test -n "$js"
+          node --check "$js"
+          test "$(find "$ROOT/plugin/ui/work-view/assets/agents" -name 'bridge-*.svg' | wc -l)" -eq 8
+          original=$(sha256sum "$js" | cut -d' ' -f1)
+          CLAUDE_MEM_BRANDING_NO_ICON_DOWNLOAD=1 node deploy/apply-claude-mem-viewer-branding.mjs --root "$ROOT"
+          test "$original" = "$(sha256sum "$js" | cut -d' ' -f1)"

@@ -44,6 +44,10 @@ jobs:
           node --test chatgpt-mcp/client-platform.test.mjs chatgpt-mcp/full-memory-tools.test.mjs chatgpt-mcp/agent-identity.test.mjs
           python3 -m unittest discover -s deploy -p 'test_platform_ui_patch.py' -v
           python3 -m unittest discover -s hermes-provider -p 'test_work_state.py' -v
+      - name: Admin preview and one-use confirmation integration
+        run: |
+          npm install --prefix memory-admin-mcp --no-audit --no-fund --ignore-scripts
+          node --test shared/confirmed-delete.test.mjs memory-admin-mcp/server.test.mjs
       - name: Viewer branding idempotence
         run: |
           d=$(mktemp -d)

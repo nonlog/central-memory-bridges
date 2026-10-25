@@ -16,9 +16,10 @@ Upstream implementation: <https://github.com/thedotmack/claude-mem/blob/main/src
 
 The upstream delete path is sync-aware: it validates canonical positive IDs, deletes only the local-origin row through the supported Worker surface, and queues a cloud-sync tombstone when cloud sync is configured. It can refuse a delete when sync identity is unavailable rather than silently stranding replicas. For that reason these bridges call the Worker API and never edit SQLite directly.
 
-The official memory integrations do not currently expose these DELETE routes as normal agent tools. Rather than patching upstream packages, this repository adds one stable tool contract:
+The official memory integrations do not currently expose these DELETE routes as normal agent tools. Rather than patching upstream packages, this repository adds two-stage tool contract:
 
 ```text
+claude_mem_preview_delete
 claude_mem_forget
 ```
 
@@ -45,14 +46,16 @@ official claude-mem search / recent / timeline
                     ↓
           enumerate exact records
                     ↓
-       user intent is unambiguous
+ claude_mem_preview_delete(items)
                     ↓
- claude_mem_forget(type + numeric id)
+  show exact preview; obtain explicit user approval
+                    ↓
+ claude_mem_forget(items + previewToken + confirmationText + confirm=true)
                     ↓
        Worker official DELETE route
 ```
 
-The tool accepts at most 50 exact records per call and de-duplicates repeated `type:id` pairs before sending requests.
+Both tools accept at most 50 exact records per call and de-duplicate repeated `type:id` pairs. Preview performs read-only GETs and produces a five-minute, one-use receipt bound to the Worker URL and record ID set. Destructive deletion rejects missing, expired, replayed, or mismatched receipts. Tokens are consumed before the first DELETE, so a partially failed batch requires a fresh preview. The confirmation flag and receipt do not cryptographically prove that a human approved; the agent must obtain explicit user approval after showing the preview.
 
 ## Claude Code
 
