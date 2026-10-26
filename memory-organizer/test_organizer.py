@@ -1,5 +1,6 @@
 import contextlib, hashlib, importlib.util, json, pathlib, sqlite3, tempfile, threading, unittest, urllib.request, urllib.error
 from unittest.mock import patch
+from types import SimpleNamespace
 spec=importlib.util.spec_from_file_location('organizer',pathlib.Path(__file__).with_name('organizer.py'));m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 
 class CatalogueTests(unittest.TestCase):
@@ -47,6 +48,16 @@ class CatalogueTests(unittest.TestCase):
   with self.assertRaises(urllib.error.HTTPError) as ex:urllib.request.urlopen(urllib.request.Request(base+'/organizer/api/records',b'{}'))
   self.assertEqual(ex.exception.code,405)
   with self.assertRaises(urllib.error.HTTPError):urllib.request.urlopen(base+'/organizer/../../etc/passwd')
+ def test_group_model_outage_keeps_conversations_separate(self):
+  (m.DATA/'settings.json').write_text('{}')
+  key='["conversation","pi","sample"]'
+  responses=[{'root':'General','conversations':[{'conversationKey':key,'openingAsk':'A request'}],'openRequests':[]},{'groups':1},{'conversations':[]}]
+  def run(*args,**kwargs):return SimpleNamespace(returncode=0,stdout=json.dumps(responses.pop(0)))
+  with patch.object(m.subprocess,'run',side_effect=run),patch.object(m,'model_json',side_effect=urllib.error.URLError('offline')):
+   result=m.group_requests(2)
+  self.assertEqual(result['grouped_conversations'],1)
+  self.assertEqual(result['rejected_merge_batches'],1)
+  self.assertEqual(result['errors'],['URLError'])
  def test_merge_receipts_are_idempotent(self):
   m.scan();db=m.index_db();aliases=db.execute('select original,canonical from aliases where approved=1').fetchall()
   for source,target in aliases:db.execute('insert into operations(at,kind,payload) values(?,?,?)',('test','project-merge',json.dumps({'from':source,'into':target,'chromaFailed':0})))
