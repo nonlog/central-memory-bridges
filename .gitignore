@@ -8,3 +8,5 @@ pi-extension/.ci/
 
 # Independent organizer local caches
 memory-organizer/__pycache__/
+
+browser-evidence/

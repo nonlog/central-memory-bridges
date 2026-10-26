@@ -8,7 +8,7 @@ permissions:
   contents: read
 jobs:
   organizer:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -43,5 +43,5 @@ jobs:
         if: always()
         with:
           name: organizer-browser-evidence
-          path: .artifacts/*.png
+          path: browser-evidence/*.png
           retention-days: 3
