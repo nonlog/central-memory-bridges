@@ -4,6 +4,9 @@ on:
     branches: [master, 'codex/**']
     paths: ['memory-organizer/**', 'deploy/*organizer*', 'deploy/mywork-status-compat.mjs', 'deploy/react-mywork-compat.mjs', 'tests/mywork-status.test.mjs', 'tests/organizer-ui.browser.mjs', '.github/workflows/memory-organizer.yml']
   pull_request:
+concurrency:
+  group: organizer-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:

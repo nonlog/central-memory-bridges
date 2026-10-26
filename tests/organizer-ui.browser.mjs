@@ -32,7 +32,7 @@ try{
  await page.goto(base+'/',{waitUntil:'networkidle'});await page.getByText('Session idle',{exact:true}).waitFor({timeout:20000});
  assert.equal(await page.getByText('Working',{exact:true}).count(),0,'ended requests cannot render Working');
  assert.ok(await page.getByText('0 confirmed active').count());
- await page.locator('aside #central-memory-organizer-nav').waitFor();
+ await page.locator('nav #central-memory-organizer-nav').waitFor();
  const text=await page.locator('#central-memory-organizer-nav').innerText();assert.equal(text,'Memories');
  assert.equal(await page.locator('header #central-memory-organizer-nav').count(),0,'no extra header row');
  const refs=await page.locator('script[type=module]').evaluateAll(nodes=>nodes.map(n=>n.src));assert.ok(refs.some(s=>s.includes('/index-cmb-')),'patched bytes use a new cache key');
