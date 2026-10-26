@@ -34,6 +34,7 @@ class CatalogueTests(unittest.TestCase):
  def test_model_scope_validation_and_secret_redaction(self):
   m.scan()
   answer={'records':[{'key':'observation:999999','project':'conduit','confidence':1},{'key':'observation:11','project':'INVALID','confidence':1},{'key':'observation:11','project':'recall','confidence':.98,'tags':['knowledge']}]}
+  db=m.index_db();db.execute("UPDATE records SET proposed_project='unclassified',method='session-model-review' WHERE kind='observation' and id=11");db.commit();db.close()
   with patch.object(m,'model_json',return_value=(answer,{'total_tokens':100})):result=m.classify_ai(30)
   self.assertEqual(result['classified'],1);db=m.index_db();self.assertEqual(db.execute("select project from records where kind='observation' and id=11").fetchone()[0],'recall');db.close()
   self.assertNotIn('sk-'+'x'*20,m.redact('api_key=sk-'+'x'*20));self.assertNotIn('abcdefghijk',m.redact('Authorization: Bearer abcdefghijk'))
