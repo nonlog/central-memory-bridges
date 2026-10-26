@@ -47,6 +47,13 @@ class CatalogueTests(unittest.TestCase):
   with self.assertRaises(urllib.error.HTTPError) as ex:urllib.request.urlopen(urllib.request.Request(base+'/organizer/api/records',b'{}'))
   self.assertEqual(ex.exception.code,405)
   with self.assertRaises(urllib.error.HTTPError):urllib.request.urlopen(base+'/organizer/../../etc/passwd')
+ def test_merge_receipts_are_idempotent(self):
+  m.scan();db=m.index_db();aliases=db.execute('select original,canonical from aliases where approved=1').fetchall()
+  for source,target in aliases:db.execute('insert into operations(at,kind,payload) values(?,?,?)',('test','project-merge',json.dumps({'from':source,'into':target,'chromaFailed':0})))
+  db.commit();db.close()
+  with patch.object(m.urllib.request,'urlopen',side_effect=AssertionError('completed aliases must not repeat')):
+   result=m.merge_aliases(True,500)
+  self.assertEqual(result['aliases'],0)
  def test_conflicting_checkout_does_not_rekey_whole_project(self):
   tax=m.Taxonomy();self.assertIsNone(tax.session_project({'project':'ClinePassProxy','cwd':'D:\\Workspace\\Codex Model Policy'}))
  def test_rules_do_not_follow_prompt_instructions(self):

@@ -285,7 +285,7 @@ def worker_get(path):
 def merge_aliases(apply=False,limit=200):
     db=index_db();results=[]
     existing={r['original']:dict(r) for r in db.execute('SELECT * FROM aliases WHERE approved=1')}
-    done={json.loads(r[0]).get('from') for r in db.execute("select payload from operations where kind='project-merge' AND json_extract(payload,'chromaFailed')=0")}
+    done={json.loads(r[0]).get('from') for r in db.execute("select payload from operations where kind='project-merge' AND json_extract(payload,'$.chromaFailed')=0")}
     for original,row in list(existing.items())[:limit]:
         if apply and original in done:continue
         body={'from':original,'into':row['canonical'],'dryRun':not apply}
