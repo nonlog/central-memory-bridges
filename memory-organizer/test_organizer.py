@@ -48,6 +48,11 @@ class CatalogueTests(unittest.TestCase):
   with self.assertRaises(urllib.error.HTTPError) as ex:urllib.request.urlopen(urllib.request.Request(base+'/organizer/api/records',b'{}'))
   self.assertEqual(ex.exception.code,405)
   with self.assertRaises(urllib.error.HTTPError):urllib.request.urlopen(base+'/organizer/../../etc/passwd')
+ def test_generic_windows_buckets_are_never_whole_project_aliases(self):
+  tax=m.Taxonomy()
+  for value in ['General','pi-General','D:\\Workspace\\General','D:\\Downloads','D-Workspace-General','C:\\Users\\www']:
+   self.assertTrue(tax.is_generic(value),value)
+  self.assertFalse(tax.is_generic('D:\\Workspace\\Conduit'))
  def test_group_titles_match_upstream_utf16_limit(self):
   title=m.bounded_title('\U0001f9e0'*100)
   self.assertLessEqual(len(title.encode('utf-16-le'))//2,120)

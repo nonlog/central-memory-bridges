@@ -67,6 +67,13 @@ class Taxonomy:
         self.rules_hash=hashlib.sha256(path.read_bytes()+b'classifier-v2').hexdigest()[:12]
         self.generic={'general','root','www','projects','workspace','downloads','tmp','new-chat','current','default','hermes-default','openclaw-main','chatgpt-web','codex','pi','omp','app','test'}
         self.patterns={p['id']:[re.compile(r'(?<![a-z0-9])'+re.escape(t.casefold())+r'(?![a-z0-9])') for t in p.get('terms',[]) if t] for p in self.projects.values()}
+    def is_generic(self,name):
+        value=re.sub(r'[\\/]+','/',str(name or '')).strip('/ ').casefold()
+        value=value.rsplit('/',1)[-1]
+        while value.startswith(('pi-','omp-')):value=value.split('-',1)[1]
+        for prefix in ('d-workspace-','d-downloads-'):
+            if value.startswith(prefix):value=value[len(prefix):]
+        return not value or value in self.generic
     def canonical(self,name):
         s=re.sub(r'[\\/]+','/',str(name or '')).strip('/ ').casefold()
         if not s:return None
@@ -163,7 +170,7 @@ def scan():
         canonical=next(iter(canonicals))
         if original==canonical:continue
         # General/client buckets contain unrelated work; never merge them wholesale.
-        generic=re.sub(r'^(?:pi-|omp-)+','',original.casefold()) in tax.generic
+        generic=tax.is_generic(original)
         if generic:continue
         db.execute('INSERT INTO aliases(original,canonical,evidence,approved) VALUES(?,?,?,1) ON CONFLICT(original) DO UPDATE SET canonical=excluded.canonical,evidence=excluded.evidence',
                    (original,canonical,'Exact project alias or unanimous recorded checkout path'))
