@@ -64,11 +64,23 @@ class CatalogueTests(unittest.TestCase):
   self.assertEqual(result['errors'],['URLError'])
  def test_merge_receipts_are_idempotent(self):
   m.scan();db=m.index_db();aliases=db.execute('select original,canonical from aliases where approved=1').fetchall()
-  for source,target in aliases:db.execute('insert into operations(at,kind,payload) values(?,?,?)',('test','project-merge',json.dumps({'from':source,'into':target,'chromaFailed':0})))
+  for source,target in aliases:
+   db.execute('insert into operations(at,kind,payload) values(?,?,?)',('test','project-merge',json.dumps({'from':source,'into':target,'chromaFailed':0})))
+   self.db.execute('UPDATE observations SET merged_into_project=? WHERE project=?',(target,source));self.db.execute('UPDATE session_summaries SET merged_into_project=? WHERE project=?',(target,source))
+  self.db.commit()
   db.commit();db.close()
   with patch.object(m.urllib.request,'urlopen',side_effect=AssertionError('completed aliases must not repeat')):
    result=m.merge_aliases(True,500)
   self.assertEqual(result['aliases'],0)
+ def test_new_captures_are_not_hidden_by_old_merge_receipt(self):
+  import io
+  m.scan();db=m.index_db();aliases=db.execute('select original,canonical from aliases where approved=1').fetchall()
+  self.assertEqual(len(aliases),1);source,target=aliases[0]
+  db.execute('insert into operations(at,kind,payload) values(?,?,?)',('test','project-merge',json.dumps({'from':source,'into':target,'chromaFailed':0})));db.commit();db.close()
+  response=io.BytesIO(json.dumps({'from':source,'into':target,'mergedObservations':1,'mergedSummaries':1,'chromaFailed':0}).encode())
+  with patch.object(m.urllib.request,'urlopen',return_value=response) as request:
+   result=m.merge_aliases(True,500)
+  self.assertEqual(request.call_count,1);self.assertEqual(result['aliases'],1)
  def test_conflicting_checkout_does_not_rekey_whole_project(self):
   tax=m.Taxonomy();self.assertIsNone(tax.session_project({'project':'ClinePassProxy','cwd':'D:\\Workspace\\Codex Model Policy'}))
  def test_rules_do_not_follow_prompt_instructions(self):
