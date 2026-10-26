@@ -498,8 +498,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         try:
             if path=='/health':return self.send({'status':'ok','service':'memory-organizer'})
             if path in ('/organizer/','/organizer'):return self.send((HERE/'index.html').read_bytes(),ctype='text/html; charset=utf-8')
-            if path in ('/organizer/app.js','/organizer/nav.js','/organizer/style.css','/organizer/integration.css'):
-                return self.send((HERE/path.rsplit('/',1)[1]).read_bytes(),ctype='text/javascript; charset=utf-8' if path.endswith('.js') else 'text/css; charset=utf-8')
+            if path in ('/organizer/app.js','/organizer/nav.js','/organizer/style.css','/organizer/integration.css','/organizer/brand.svg'):
+                return self.send((HERE/path.rsplit('/',1)[1]).read_bytes(),ctype='text/javascript; charset=utf-8' if path.endswith('.js') else 'image/svg+xml' if path.endswith('.svg') else 'text/css; charset=utf-8')
             if path=='/organizer/api/overview':return self.send(overview())
             if path=='/api/work-view':return self.send(activity_snapshot())
             if path=='/api/work-view/events':return self.work_events()

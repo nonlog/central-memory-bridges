@@ -23,3 +23,11 @@ Use the provided service/timer and authenticated Nginx snippet. The API binds on
 ## Rollback
 
 Disable the refresh timer, remove the organizer-specific admin proxy routes and navigation injection, and restore the backed-up Viewer bundle. Remove/rebuild only the sidecar index to discard inferred classifications. Do not restore the whole original memory database over newer captures: upstream merge rollback requires a reviewed, targeted metadata migration (or the consistent snapshot during a controlled maintenance window).
+
+## Complete contextual review and native integration
+
+`reviewer.py` reviews unresolved records using their immediate user-turn context, not merely a title or the most common project in a mixed session. It stores an auditable, source-fingerprint-bound result for each record; omitted outputs are retried. `--phase 2` reconsiders uncertain results, and later phases support additional verified project scopes. General reference and empty conversation records are legitimate categories, not a manual review queue.
+
+Use a separate `MEMORY_ORGANIZER_STATE` for a complete historical review. `publish_review.py <staging/catalog.sqlite>` publishes only matching source fingerprints into the live organizer index; source conflicts are reported, not overwritten. Raw memory text and source identifiers are never modified.
+
+The authenticated `/api/work-view` and its SSE endpoint add recorded session-activity metadata. A completed observer session is shown as **Session idle**, never as delivered work; there is no assumed live heartbeat. The React overlay uses a content-addressed `index-cmb-<hash>.js` and updates the HTML reference, preventing stale browser/CDN cache reuse. The Memories entry shares the native sidebar, and the library uses the native English UI vocabulary with light/dark themes.

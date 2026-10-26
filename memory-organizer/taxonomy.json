@@ -279,7 +279,8 @@
         "autostart",
         "winget",
         "windows font"
-      ]
+      ],
+      "description": "Windows software setup, ordinary desktop management, workspace inventories, PowerShell behavior, and software licensing assistance without a more specific project."
     },
     {
       "id": "pc-migration",
@@ -761,7 +762,8 @@
         "scope-regression",
         "luna-probe"
       ],
-      "terms": []
+      "terms": [],
+      "description": "Explicit smoke tests, protocol verification prompts, provider recovery probes, test markers and validation-only records."
     },
     {
       "id": "unclassified",
@@ -774,7 +776,7 @@
       "id": "general-reference",
       "label": "General Reference",
       "category": "reference",
-      "description": "Reusable technical knowledge or factual notes with no specific project",
+      "description": "Mathematical reasoning, logic puzzles, reusable technical knowledge, factual questions, and reference notes without a specific project.",
       "aliases": [],
       "terms": [
         "general reference"
@@ -794,7 +796,7 @@
       "id": "conversation-meta",
       "label": "Conversation Notes",
       "category": "reference",
-      "description": "Acknowledgments, coordination and control commands without substantive project content",
+      "description": "Empty session records, no-user-request/no-activity summaries, acknowledgments, coordination and control commands without substantive content. These are legitimately categorized records, not an unreviewed backlog.",
       "aliases": [],
       "terms": [
         "conversation metadata"
@@ -876,6 +878,115 @@
       "terms": [
         "ChatGPT userscript",
         "ChatGPT UI script"
+      ]
+    },
+    {
+      "id": "shellular",
+      "label": "Shellular",
+      "category": "agents",
+      "description": "Shellular terminal and ACP service installation, daemon, PM2 and Windows configuration",
+      "aliases": [],
+      "terms": [
+        "Shellular"
+      ]
+    },
+    {
+      "id": "rime-input",
+      "label": "Rime / Weasel",
+      "category": "desktop",
+      "description": "Rime input method, Weasel, RIMES Windows preview and input schemes",
+      "aliases": [],
+      "terms": [
+        "RIMES",
+        "Weasel",
+        "Rime input"
+      ]
+    },
+    {
+      "id": "cliamp",
+      "label": "CLIAMP",
+      "category": "media",
+      "description": "CLIAMP terminal music playback, IPC and yt-dlp integration",
+      "aliases": [],
+      "terms": [
+        "CLIAMP"
+      ]
+    },
+    {
+      "id": "opencode",
+      "label": "OpenCode",
+      "category": "agents",
+      "description": "OpenCode coding agent, versions, plugins and migration",
+      "aliases": [],
+      "terms": [
+        "OpenCode"
+      ]
+    },
+    {
+      "id": "zed",
+      "label": "Zed",
+      "category": "agents",
+      "description": "Zed editor, imported agent threads, external agent servers, ACP and Ponytail",
+      "aliases": [],
+      "terms": [
+        "Zed editor",
+        "Ponytail",
+        "Zed external agent"
+      ]
+    },
+    {
+      "id": "t3code",
+      "label": "T3Code",
+      "category": "agents",
+      "description": "T3Code application and imported conversation data",
+      "aliases": [],
+      "terms": [
+        "T3Code"
+      ]
+    },
+    {
+      "id": "paseo",
+      "label": "Paseo",
+      "category": "agents",
+      "description": "Paseo application installation, configuration and cleanup",
+      "aliases": [],
+      "terms": [
+        "Paseo"
+      ]
+    },
+    {
+      "id": "computer-use",
+      "label": "Computer Use",
+      "category": "agents",
+      "description": "Desktop computer use integration, UI automation and inspection",
+      "aliases": [],
+      "terms": [
+        "Computer Use",
+        "computer-use",
+        "@oai/sky"
+      ]
+    },
+    {
+      "id": "agent-reach",
+      "label": "Agent Reach / OpenCLI",
+      "category": "agents",
+      "description": "Agent Reach web tools, OpenCLI adapters and command configuration",
+      "aliases": [],
+      "terms": [
+        "Agent Reach",
+        "Agent-Reach",
+        "OpenCLI"
+      ]
+    },
+    {
+      "id": "vscode-serial",
+      "label": "VS Code Serial Monitor",
+      "category": "embedded",
+      "description": "VS Code serial monitor extension and debugging",
+      "aliases": [],
+      "terms": [
+        "vscode-serial-monitor",
+        "VS Code Serial Monitor"
       ]
     }
   ],
