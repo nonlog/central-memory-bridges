@@ -306,7 +306,7 @@ def group_requests(max_batches=4):
         p=subprocess.run([bun,str(script),*args],input=input,text=True,capture_output=True,timeout=35,env=env)
         if p.returncode:raise ValueError('Official grouping validator refused result')
         return json.loads(p.stdout)
-    count=0;errors=[]
+    count=0;errors=[];fallbacks=0
     for _ in range(max_batches):
         inp=command(['grouping-input','--limit','20'])
         if not inp.get('conversations'):break
@@ -320,11 +320,16 @@ def group_requests(max_batches=4):
             existing={g['anchor'] for g in inp.get('openRequests',[]) if isinstance(g.get('anchor'),str)}
             if not asked.issubset(set(allkeys)) or len(allkeys)!=len(set(allkeys)) or any(k not in asked|existing for k in allkeys) or answer.get('ignored'):raise ValueError('Grouping response changed the requested scope')
             command(['apply','-'],dumps(answer));count+=len(asked)
+        except ValueError:
+            # Rejected joins fall back to separate conversations, still through
+            # the official validator. Never bypass a cross-project/evidence gate.
+            separate={'groups':[{'title':redact(x.get('openingAsk') or 'Recorded request').strip()[:120] or 'Recorded request','conversations':[x['conversationKey']],'links':[]} for x in inp['conversations']],'ignored':[]}
+            try:
+                command(['apply','-'],dumps(separate));count+=len(inp['conversations']);fallbacks+=1
+            except Exception as exc:errors.append(type(exc).__name__);break
         except Exception as exc:
-            errors.append(type(exc).__name__)
-            # A model's invalid merge is not permission to bypass upstream validation.
-            break
-    result={'grouped_conversations':count,'errors':errors}
+            errors.append(type(exc).__name__);break
+    result={'grouped_conversations':count,'rejected_merge_batches':fallbacks,'errors':errors}
     if count:
         # The independent service owns refresh metadata only after the official poller is disabled.
         settings=json.loads((DATA/'settings.json').read_text())
@@ -350,7 +355,13 @@ def _filters(q,kind=None):
     if kind:clauses.append('kind=?');args.append(kind)
     for k in ['project','category','platform']:
         v=q.get(k,[''])[0]
-        if v:clauses.append(k+'=?');args.append(v)
+        if v:
+            column=k
+            if k=='project' and v not in Taxonomy().projects:
+                mapped=Taxonomy().canonical(v)
+                if mapped:v=mapped
+                else:column='original_project'
+            clauses.append(column+'=?');args.append(v)
     term=q.get('q',[''])[0][:200]
     if term:clauses.append('(instr(lower(title),lower(?))>0 OR instr(lower(excerpt),lower(?))>0)');args.extend([term,term])
     return (' WHERE '+' AND '.join(clauses) if clauses else ''),args

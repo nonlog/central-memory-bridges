@@ -30,6 +30,7 @@ class CatalogueTests(unittest.TestCase):
  def test_native_schema_and_pagination_keep_ids(self):
   m.scan();d=m.native_list('observation',{'project':['pixel-search'],'limit':['1']});self.assertEqual(d['items'][0]['id'],10);self.assertEqual(d['items'][0]['project'],'pixel-search');self.assertEqual(d['items'][0]['original_project'],'pi-pi-worktree-abcd');self.assertFalse(d['hasMore'])
   self.assertEqual(m.native_list('prompt',{'project':['pixel-search']})['items'][0]['id'],30)
+  self.assertEqual(m.native_list('observation',{'project':['pi-pi-worktree-abcd']})['items'][0]['id'],10)
   self.assertEqual(m.native_list('summary',{'project':['pixel-search']})['items'][0]['session_id'],'session-1')
  def test_model_scope_validation_and_secret_redaction(self):
   m.scan()
