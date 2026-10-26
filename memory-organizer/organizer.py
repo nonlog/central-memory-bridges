@@ -436,7 +436,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('command',choices=['scan','classify','classify-sessions','merge','group','refresh','serve','overview']);parser.add_argument('--limit',type=int,default=400);parser.add_argument('--apply',action='store_true');parser.add_argument('--port',type=int,default=37779);args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument('command',choices=['scan','classify','classify-sessions','merge','group','refresh','serve','overview']);parser.add_argument('--limit',type=int,default=400);parser.add_argument('--apply',action='store_true');parser.add_argument('--port',type=int,default=38179);args=parser.parse_args()
     os.umask(0o077);STATE.mkdir(parents=True,exist_ok=True,mode=0o700)
     if args.command=='scan':result=scan()
     elif args.command=='classify':result=classify_ai(args.limit)

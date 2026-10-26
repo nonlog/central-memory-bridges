@@ -18,7 +18,7 @@ My Work's display-only overlay stops calling unknown activity `Working`, labels 
 
 ## Deployment
 
-Use the provided service/timer and authenticated Nginx snippet. The API binds only to 127.0.0.1:37779. `MEMORY_ORGANIZER_STATE` overrides index location; `CLAUDE_MEM_DATA_DIR` selects source data. AI, grouping and deterministic alias application have separate environment toggles. There are no repository secrets. Formal tests and upstream bundle checks run in GitHub Actions.
+Use the provided service/timer and authenticated Nginx snippet. The API binds only to 127.0.0.1:38179. `MEMORY_ORGANIZER_STATE` overrides index location; `CLAUDE_MEM_DATA_DIR` selects source data. AI, grouping and deterministic alias application have separate environment toggles. There are no repository secrets. Formal tests and upstream bundle checks run in GitHub Actions.
 
 ## Rollback
 

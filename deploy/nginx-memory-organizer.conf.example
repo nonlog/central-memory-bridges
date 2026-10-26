@@ -2,15 +2,15 @@
 # Never install this snippet in the public machine/ingest virtual host.
 location ^~ /organizer/ {
     if ($request_method !~ ^(GET|HEAD)$) { return 405; }
-    proxy_pass http://127.0.0.1:37779;
-    proxy_set_header Host 127.0.0.1:37779;
+    proxy_pass http://127.0.0.1:38179;
+    proxy_set_header Host 127.0.0.1:38179;
     proxy_set_header Authorization "";
     add_header Cache-Control "private, no-store" always;
 }
 location ~ ^/api/(projects|observations|summaries|prompts|sessions)$ {
     if ($request_method !~ ^(GET|HEAD)$) { return 405; }
-    proxy_pass http://127.0.0.1:37779;
-    proxy_set_header Host 127.0.0.1:37779;
+    proxy_pass http://127.0.0.1:38179;
+    proxy_set_header Host 127.0.0.1:38179;
     proxy_set_header Authorization "";
     add_header Cache-Control "private, no-store" always;
 }

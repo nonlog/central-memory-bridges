@@ -7,7 +7,7 @@ Type=simple
 WorkingDirectory=/root/apps/central-memory-bridges/memory-organizer
 Environment=CLAUDE_MEM_DATA_DIR=/srv/storage/shared/us-migrated/claude-mem
 Environment=MEMORY_ORGANIZER_STATE=/srv/storage/shared/us-migrated/claude-mem/organizer
-ExecStart=/usr/bin/python3 /root/apps/central-memory-bridges/memory-organizer/organizer.py serve --port 37779
+ExecStart=/usr/bin/python3 /root/apps/central-memory-bridges/memory-organizer/organizer.py serve --port 38179
 Restart=on-failure
 RestartSec=5
 UMask=0077

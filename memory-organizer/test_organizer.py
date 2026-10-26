@@ -39,6 +39,7 @@ class CatalogueTests(unittest.TestCase):
   self.assertNotIn('sk-'+'x'*20,m.redact('api_key=sk-'+'x'*20));self.assertNotIn('abcdefghijk',m.redact('Authorization: Bearer abcdefghijk'))
  def test_http_is_read_only_and_original_record_is_preserved(self):
   m.scan();server=m.http.server.ThreadingHTTPServer(('127.0.0.1',0),m.Handler);t=threading.Thread(target=server.serve_forever,daemon=True);t.start();self.addCleanup(server.server_close);self.addCleanup(server.shutdown);base='http://127.0.0.1:'+str(server.server_address[1])
+  health=json.load(urllib.request.urlopen(base+'/health'));self.assertEqual(health['service'],'memory-organizer')
   d=json.load(urllib.request.urlopen(base+'/api/projects'));self.assertIn('pixel-search',d['projects']);self.assertNotIn('pi-pi-worktree-abcd',d['projects'])
   raw=json.load(urllib.request.urlopen(base+'/organizer/api/record?kind=observation&id=10'));self.assertEqual(raw['record']['project'],'pi-pi-worktree-abcd')
   with self.assertRaises(urllib.error.HTTPError) as ex:urllib.request.urlopen(urllib.request.Request(base+'/organizer/api/records',b'{}'))
