@@ -33,6 +33,7 @@ class CatalogueTests(unittest.TestCase):
   self.assertEqual(m.native_list('prompt',{'project':['pixel-search']})['items'][0]['id'],30)
   self.assertEqual(m.native_list('observation',{'project':['pi-pi-worktree-abcd']})['items'][0]['id'],10)
   self.assertEqual(m.native_list('summary',{'project':['pixel-search']})['items'][0]['session_id'],'session-1')
+  self.assertEqual(m.native_list('session',{'project':['pixel-search']})['sessions'][0]['item_count'],3)
  def test_model_scope_validation_and_secret_redaction(self):
   m.scan()
   answer={'records':[{'key':'observation:999999','project':'conduit','confidence':1},{'key':'observation:11','project':'INVALID','confidence':1},{'key':'observation:11','project':'recall','confidence':.98,'tags':['knowledge']}]}

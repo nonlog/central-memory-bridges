@@ -421,10 +421,13 @@ def native_list(kind,q):
     items=[]
     for r in rows[:limit]:
         data=raw_record(kind,r['id'],src)
-        if data:items.append(decorate(data,r,kind))
+        if data:
+            item=decorate(data,r,kind)
+            if kind=='session':
+                item['item_count']=db.execute("SELECT count(*) FROM records WHERE session_key=? AND kind!='session'",(r['session_key'],)).fetchone()[0] if r['session_key'] else 0
+            items.append(item)
     db.close();src.close()
     if kind=='session':
-        for item in items:item.setdefault('item_count',0)
         return {'sessions':items,'hasMore':len(rows)>limit}
     return {'items':items,'hasMore':len(rows)>limit,'offset':offset,'limit':limit}
 
