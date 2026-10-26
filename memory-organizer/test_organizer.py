@@ -48,6 +48,10 @@ class CatalogueTests(unittest.TestCase):
   with self.assertRaises(urllib.error.HTTPError) as ex:urllib.request.urlopen(urllib.request.Request(base+'/organizer/api/records',b'{}'))
   self.assertEqual(ex.exception.code,405)
   with self.assertRaises(urllib.error.HTTPError):urllib.request.urlopen(base+'/organizer/../../etc/passwd')
+ def test_group_titles_match_upstream_utf16_limit(self):
+  title=m.bounded_title('\U0001f9e0'*100)
+  self.assertLessEqual(len(title.encode('utf-16-le'))//2,120)
+  self.assertTrue(title)
  def test_group_model_outage_keeps_conversations_separate(self):
   (m.DATA/'settings.json').write_text('{}')
   key='["conversation","pi","sample"]'

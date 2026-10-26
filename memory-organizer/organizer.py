@@ -28,6 +28,12 @@ def redact(text):
     return text
 
 
+def bounded_title(text):
+    # Upstream JavaScript enforces a UTF-16 length, not Python codepoints.
+    text=' '.join(redact(text or 'Recorded request').split())
+    return text.encode('utf-16-le')[:240].decode('utf-16-le','ignore') or 'Recorded request'
+
+
 def source_db():
     db=sqlite3.connect((DATA/'claude-mem.db').as_uri()+'?mode=ro',uri=True,timeout=10)
     db.row_factory=sqlite3.Row; db.execute('PRAGMA query_only=ON'); db.execute('PRAGMA busy_timeout=5000')
@@ -315,7 +321,7 @@ def group_requests(max_batches=4):
         except Exception as exc:
             errors.append(type(exc).__name__)
             # Model outages must not block safe bookkeeping or invent joins.
-            answer={'groups':[{'title':redact(x.get('openingAsk') or 'Recorded request').strip()[:120] or 'Recorded request','conversations':[x['conversationKey']],'links':[]} for x in inp['conversations']],'ignored':[]}
+            answer={'groups':[{'title':bounded_title(x.get('openingAsk')),'conversations':[x['conversationKey']],'links':[]} for x in inp['conversations']],'ignored':[]}
             fallbacks+=1
         try:
             # Validate asked IDs and existing group membership using the official check first.
@@ -329,7 +335,7 @@ def group_requests(max_batches=4):
         except ValueError:
             # Rejected joins fall back to separate conversations, still through
             # the official validator. Never bypass a cross-project/evidence gate.
-            separate={'groups':[{'title':redact(x.get('openingAsk') or 'Recorded request').strip()[:120] or 'Recorded request','conversations':[x['conversationKey']],'links':[]} for x in inp['conversations']],'ignored':[]}
+            separate={'groups':[{'title':bounded_title(x.get('openingAsk')),'conversations':[x['conversationKey']],'links':[]} for x in inp['conversations']],'ignored':[]}
             try:
                 command(['apply','-'],dumps(separate));count+=len(inp['conversations']);fallbacks+=1
             except Exception as exc:errors.append(type(exc).__name__);break
