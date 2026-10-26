@@ -1,7 +1,7 @@
 'use strict';
 const $=s=>document.querySelector(s);let overview=null,state={category:'',project:'',q:'',kind:'',offset:0},generation=0;
 const labels={observation:'观察记忆',summary:'会话摘要',prompt:'用户请求',session:'会话'};
-const methods={'session-context':'会话证据','explicit-project-supported':'项目与内容一致','project-alias':'明确项目','session-cwd':'工作目录','content-evidence':'内容证据','model-evidence':'模型分类','model-review':'待复核','needs-review':'待复核','verification-marker':'验证记录','conflicting-project-cwd':'归属冲突'};
+const methods={'session-model':'单一主题会话','session-model-review':'会话待复核','session-context':'会话证据','explicit-project-supported':'项目与内容一致','project-alias':'明确项目','session-cwd':'工作目录','content-evidence':'内容证据','model-evidence':'模型分类','model-review':'待复核','needs-review':'待复核','verification-marker':'验证记录','conflicting-project-cwd':'归属冲突'};
 const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n};
 async function api(path){const r=await fetch(path,{credentials:'same-origin',cache:'no-store'});if(!r.ok)throw Error('请求失败（'+r.status+'）');return r.json()}
 function categories(){const box=$('#categories');box.replaceChildren();const totals={};for(const p of overview.projects)totals[p.category]=(totals[p.category]||0)+p.count;for(const [key,name]of [['','全部分类'],...Object.entries(overview.categories)]){const b=el('button','category'+(state.category===key?' active':''));b.append(el('span','',name),el('small','quiet',key?totals[key]||0:Object.values(overview.totals).reduce((a,b)=>a+b,0)));b.onclick=()=>{state.category=key;state.project='';state.offset=0;categories();projects();loadRecords()};box.append(b)}}

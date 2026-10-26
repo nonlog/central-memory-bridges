@@ -6,6 +6,9 @@ UPDATE = Path(__file__).with_name("claude-mem-weekly-update.sh").read_text(encod
 
 
 class TestAutomaticUpgradeContract(unittest.TestCase):
+    def test_independent_organizer_ownership_survives_upgrade(self):
+        self.assertIn('"CLAUDE_MEM_WORK_VIEW_AUTO_REFRESH"', UPDATE)
+
     def test_official_remote_spool_token_is_preserved(self):
         self.assertIn('"CLAUDE_MEM_WORKER_INGEST_TOKEN"', UPDATE)
         self.assertIn('for k,v in old.items():', UPDATE)

@@ -295,6 +295,7 @@ prefixes=(
 exact={
     "CLAUDE_MEM_PROVIDER", "CLAUDE_MEM_MODEL", "CLAUDE_MEM_QUOTA_FALLBACK_PROVIDER",
     "CLAUDE_MEM_WORKER_INGEST_TOKEN", "CLAUDE_MEM_HOOK_SPOOL_TRANSPORT",
+    "CLAUDE_MEM_WORK_VIEW_AUTO_REFRESH",
 }
 for k,v in old.items():
     if k in exact or any(k.startswith(pre) for pre in prefixes):
