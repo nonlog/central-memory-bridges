@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import {patchMyWorkStatus} from './mywork-status-compat.mjs';
 
 const REGISTRY_START = '/* central-memory-bridges:react-registry:start */';
 const REGISTRY_END = '/* central-memory-bridges:react-registry:end */';
@@ -27,7 +28,7 @@ export function patchReactBundle(source) {
     if (!source.includes(REGISTRY_START) || !source.includes(REGISTRY_END) ||
         !source.includes(AVATAR_START) || !source.includes(AVATAR_END))
       throw new Error('Incomplete React My Work overlay markers');
-    return source;
+    return patchMyWorkStatus(source);
   }
   // Fail closed on upstream changes: never blindly rewrite unrelated React code.
   const originalRegistry = /([A-Za-z_$][\w$]*)=\[`claude`,`codex`,`gemini`\],([A-Za-z_$][\w$]*)=\{claude:`Claude Code`,codex:`Codex`,gemini:`Gemini`\}/g;
@@ -52,7 +53,7 @@ export function patchReactBundle(source) {
     'if(e===`claude-web`)e=`claude`;if(e===`gemini-web`)e=`gemini`;' +
     AVATAR_END + 'return e===`claude`?';
   patched = patched.slice(0,pos)+injected+patched.slice(pos+ret.length);
-  return patched;
+  return patchMyWorkStatus(patched);
 }
 
 export function findReactBundles(root) {

@@ -1,0 +1,34 @@
+name: Memory organizer integrity
+on:
+  push:
+    branches: [master, 'codex/**']
+    paths: ['memory-organizer/**', 'deploy/*organizer*', 'deploy/mywork-status-compat.mjs', 'deploy/react-mywork-compat.mjs', 'tests/mywork-status.test.mjs', '.github/workflows/memory-organizer.yml']
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  organizer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - name: Read-only data, taxonomy, API and model contracts
+        run: |
+          python -m unittest discover -s memory-organizer -p 'test_*.py' -v
+          node --check memory-organizer/app.js
+          node --check memory-organizer/nav.js
+          node --test tests/mywork-status.test.mjs tests/work-view-branding.test.mjs
+      - name: Verify official React package status overlay without rebuilding upstream
+        run: |
+          d=$(mktemp -d)
+          npm pack claude-mem@15.1.0 --silent --pack-destination "$d"
+          tar -xzf "$d/claude-mem-15.1.0.tgz" -C "$d" package/plugin/ui/work-view package/plugin/ui/viewer.html
+          CLAUDE_MEM_BRANDING_NO_ICON_DOWNLOAD=1 node deploy/apply-claude-mem-viewer-branding.mjs --root "$d/package"
+          node deploy/apply-claude-mem-viewer-branding.mjs --root "$d/package" --check
+          j=$(find "$d/package/plugin/ui/work-view/assets" -name 'index-*.js' -print -quit)
+          node --check "$j"
+          grep -q 'truthful-mywork-status:v1' "$j"

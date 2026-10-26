@@ -1,0 +1,7 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>记忆分类 · Claude-mem</title><link rel="stylesheet" href="/organizer/style.css"><script defer src="/organizer/app.js"></script></head><body>
+<header><div><strong>Claude-mem</strong><span class="quiet"> / 记忆分类</span></div><nav><a href="/">My Work</a><a href="/viewer">时间线</a><button id="reload">刷新</button></nav></header>
+<div class="layout"><aside><h2>分类</h2><div id="categories"></div><p class="footnote">分类不改变原始记忆、记录 ID 或来源。待复核记录保留在索引中，不会被删除。</p></aside>
+<main><h1>有序的长期记忆</h1><p class="quiet" id="status">正在读取分类索引…</p><section id="stats" class="stats"></section><section id="projects" class="projects"></section>
+<div class="toolbar"><input id="search" type="search" placeholder="搜索标题和内容（支持中文）"><select id="kind"><option value="">全部记录类型</option><option value="observation">观察记忆</option><option value="summary">会话摘要</option><option value="prompt">用户请求</option><option value="session">会话</option></select><button id="clear">清除筛选</button></div>
+<div class="results-head"><h2 id="result-title">全部记忆</h2><span id="count" class="quiet"></span></div><div id="records"></div><div class="pagination"><button id="prev">上一页</button><span id="page"></span><button id="next">下一页</button></div>
+</main></div><dialog id="detail"><button id="close" class="close">关闭</button><h2 id="detail-title"></h2><div id="detail-body"></div></dialog></body></html>

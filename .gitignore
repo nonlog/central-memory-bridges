@@ -5,3 +5,6 @@
 *.pyc
 pi-extension/.ci/
 .DS_Store
+
+# Independent organizer local caches
+memory-organizer/__pycache__/

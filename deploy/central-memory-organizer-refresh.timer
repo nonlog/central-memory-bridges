@@ -1,0 +1,9 @@
+[Unit]
+Description=Refresh categorized memory every 15 minutes
+[Timer]
+OnBootSec=3min
+OnUnitInactiveSec=15min
+AccuracySec=30s
+Unit=central-memory-organizer-refresh.service
+[Install]
+WantedBy=timers.target

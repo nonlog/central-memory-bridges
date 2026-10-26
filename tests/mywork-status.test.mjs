@@ -1,0 +1,3 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {patchMyWorkStatus} from '../deploy/mywork-status-compat.mjs';
+test('unknown activity is never represented as live execution',()=>{const source='function a(e,t){switch(e){case`unknown`:return{state:t?`working`:`idle`,stage:`Building`,who:`bot`}}}var labels={working:`Working`,"needs-check":`Done`,idle:`Idle`};var x={children:`Running`};';const s=patchMyWorkStatus(source);assert.ok(!s.includes('state:t?`working`'));assert.ok(s.includes('未确认 / 历史'));assert.ok(s.includes('经过时间'));assert.equal(patchMyWorkStatus(s),s)});
+test('changed upstream mapping fails closed',()=>{assert.throws(()=>patchMyWorkStatus('case`unknown`:return{state:"different"};idle:`Idle`'),/contract changed/)});

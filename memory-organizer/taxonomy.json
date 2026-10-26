@@ -1,0 +1,773 @@
+{
+  "version": 1,
+  "categories": {
+    "memory": "记忆系统",
+    "agents": "Agent 与工具",
+    "infrastructure": "服务与基础设施",
+    "desktop": "Windows 与桌面项目",
+    "android": "Android 与模块",
+    "embedded": "嵌入式与面试",
+    "fonts": "字体",
+    "media": "媒体与内容",
+    "learning": "语言学习",
+    "personal": "个人笔记",
+    "review": "待复核与验证"
+  },
+  "projects": [
+    {
+      "id": "central-memory-bridges",
+      "category": "memory",
+      "label": "Memory Bridges",
+      "aliases": [
+        "memory-management",
+        "executor-central-memory",
+        "vps-central-memory-bridges-claude-mem"
+      ],
+      "terms": [
+        "central-memory-bridges",
+        "memory bridge",
+        "memory-admin-mcp",
+        "memory organizer"
+      ]
+    },
+    {
+      "id": "claude-mem",
+      "category": "memory",
+      "label": "Claude-mem",
+      "aliases": [],
+      "terms": [
+        "claude-mem",
+        "claude mem",
+        "grok-mem",
+        "hook spool",
+        "central worker",
+        "中央记忆",
+        "记忆钩子"
+      ]
+    },
+    {
+      "id": "agent-config",
+      "category": "agents",
+      "label": "Agent Configuration",
+      "aliases": [
+        "agent-global-config",
+        "agent-configuration",
+        "agent-tooling",
+        "agent-tools",
+        "agent-stack-windows",
+        "cli-hooks-repository-organization"
+      ],
+      "terms": [
+        "agent configuration",
+        "agent config",
+        "AGENTS.md",
+        "agent configuration"
+      ]
+    },
+    {
+      "id": "agentdock",
+      "category": "agents",
+      "label": "AgentDock",
+      "aliases": [
+        "AgentDock-Windows",
+        "windows-log"
+      ],
+      "terms": [
+        "agentdock",
+        "nexusdock"
+      ]
+    },
+    {
+      "id": "codex",
+      "category": "agents",
+      "label": "Codex",
+      "aliases": [
+        "codex-chatgpt-web",
+        "codex-auto-thread-title",
+        "codex-auto-title"
+      ],
+      "terms": [
+        "codex cli",
+        "codex desktop",
+        "codex config",
+        "codex session",
+        "Codex"
+      ]
+    },
+    {
+      "id": "claude-code",
+      "category": "agents",
+      "label": "Claude Code",
+      "aliases": [],
+      "terms": [
+        "claude code",
+        "claude-code"
+      ]
+    },
+    {
+      "id": "pi-agent",
+      "category": "agents",
+      "label": "Pi Agent",
+      "aliases": [
+        "pi-coding-agent",
+        "pi",
+        "pi-auto-session-title",
+        "pi-bar-cursor"
+      ],
+      "terms": [
+        "pi extension",
+        "pi-extension",
+        "pi-coding-agent",
+        "pi-warden",
+        "pi agent",
+        "context-mode",
+        "Pi CLI",
+        "models.json",
+        "Pi model",
+        "pi extension"
+      ]
+    },
+    {
+      "id": "hermes-agent",
+      "category": "agents",
+      "label": "Hermes",
+      "aliases": [],
+      "terms": [
+        "hermes agent",
+        "hermes-agent",
+        "hermes provider"
+      ]
+    },
+    {
+      "id": "openclaw",
+      "category": "agents",
+      "label": "OpenClaw",
+      "aliases": [],
+      "terms": [
+        "openclaw"
+      ]
+    },
+    {
+      "id": "executor",
+      "category": "agents",
+      "label": "Executor MCP",
+      "aliases": [
+        "executor-mcp",
+        "executor-vps",
+        "executor-selfhost",
+        "executor-web-access"
+      ],
+      "terms": [
+        "executor mcp",
+        "executor.sh",
+        "executor deployment"
+      ]
+    },
+    {
+      "id": "mcphub",
+      "category": "agents",
+      "label": "MCPHub",
+      "aliases": [
+        "mcphub-google-workspace",
+        "mcphub-migration",
+        "MCP-Infrastructure",
+        "mcphub-vs-executor"
+      ],
+      "terms": [
+        "mcphub",
+        "google workspace oauth"
+      ]
+    },
+    {
+      "id": "herdr",
+      "category": "agents",
+      "label": "Herdr",
+      "aliases": [],
+      "terms": [
+        "herdr",
+        "herdr-radar"
+      ]
+    },
+    {
+      "id": "ovis",
+      "category": "agents",
+      "label": "Ovis / Web UI",
+      "aliases": [
+        "herdr-web-ui",
+        "herdr-web-ui-sync"
+      ],
+      "terms": [
+        "herdr-web-ui",
+        "ovis",
+        "devswha"
+      ]
+    },
+    {
+      "id": "recall",
+      "category": "desktop",
+      "label": "Recall",
+      "aliases": [],
+      "terms": [
+        "recall",
+        "session recall"
+      ]
+    },
+    {
+      "id": "conduit",
+      "category": "desktop",
+      "label": "Conduit",
+      "aliases": [
+        "Conduit-LinkToWindows",
+        "LinkToWindowsSchedulerGuard"
+      ],
+      "terms": [
+        "conduit"
+      ]
+    },
+    {
+      "id": "nova-search",
+      "category": "desktop",
+      "label": "Nova Search",
+      "aliases": [
+        "nv-a11y",
+        "nv-shortcut",
+        "nv-search",
+        "nv-view"
+      ],
+      "terms": [
+        "nova-search",
+        "nova search"
+      ]
+    },
+    {
+      "id": "pixel-search",
+      "category": "desktop",
+      "label": "Pixel Search",
+      "aliases": [],
+      "terms": [
+        "pixel-search",
+        "pixel search"
+      ]
+    },
+    {
+      "id": "search-evo",
+      "category": "desktop",
+      "label": "SearchEVO",
+      "aliases": [
+        "SearchEVO"
+      ],
+      "terms": [
+        "searchevo",
+        "search evo"
+      ]
+    },
+    {
+      "id": "windows-management",
+      "category": "desktop",
+      "label": "Windows Management",
+      "aliases": [
+        "Windows-Management",
+        "Windows-log",
+        "Windows-environment-disk-hygiene",
+        "remote-access"
+      ],
+      "terms": [
+        "windows management",
+        "windows 11",
+        "windows terminal",
+        "autostart",
+        "winget",
+        "windows font"
+      ]
+    },
+    {
+      "id": "pc-migration",
+      "category": "desktop",
+      "label": "PC Migration",
+      "aliases": [
+        "Windows-environment-migration"
+      ],
+      "terms": [
+        "pc migration",
+        "pc-migration",
+        "new pc",
+        "source pc",
+        "电脑迁移",
+        "新电脑迁移"
+      ]
+    },
+    {
+      "id": "scoop",
+      "category": "desktop",
+      "label": "Scoop",
+      "aliases": [
+        "scoop-www",
+        "Windows-log-Scoop-www-bucket"
+      ],
+      "terms": [
+        "scoop",
+        "unigetui"
+      ]
+    },
+    {
+      "id": "terminal",
+      "category": "desktop",
+      "label": "Terminal",
+      "aliases": [],
+      "terms": [
+        "terminal emulator",
+        "terminal project",
+        "tty7",
+        "windows terminal"
+      ]
+    },
+    {
+      "id": "alttaber",
+      "category": "desktop",
+      "label": "AltTaber",
+      "aliases": [],
+      "terms": [
+        "alttaber"
+      ]
+    },
+    {
+      "id": "newapi-cpa",
+      "category": "infrastructure",
+      "label": "NewAPI / CPA",
+      "aliases": [
+        "NewAPI-CPA",
+        "new-api",
+        "gpt_free_cpa_script"
+      ],
+      "terms": [
+        "newapi",
+        "new api",
+        "cliproxyapi",
+        "cpamp",
+        "cpa manager",
+        "OpenAI Responses",
+        "Anthropic Messages",
+        "API channel"
+      ]
+    },
+    {
+      "id": "magpie",
+      "category": "infrastructure",
+      "label": "Magpie",
+      "aliases": [],
+      "terms": [
+        "magpie"
+      ]
+    },
+    {
+      "id": "cline-pass-proxy",
+      "category": "infrastructure",
+      "label": "ClinePassProxy",
+      "aliases": [
+        "ClinePassProxy",
+        "ClinePassBridge"
+      ],
+      "terms": [
+        "clinepassproxy",
+        "clinepassbridge",
+        "cline pass proxy"
+      ]
+    },
+    {
+      "id": "command-code-proxy",
+      "category": "infrastructure",
+      "label": "CommandCodeProxy",
+      "aliases": [
+        "CommandCodeProxy"
+      ],
+      "terms": [
+        "commandcodeproxy",
+        "commandcode",
+        "cc-muse",
+        "cc-nofinish",
+        "cc-model-catalog",
+        "codex-cc-native-search",
+        "pi-muse-v"
+      ]
+    },
+    {
+      "id": "workbuddy2api",
+      "category": "infrastructure",
+      "label": "WorkBuddy2API",
+      "aliases": [
+        "workbuddy2api-panel"
+      ],
+      "terms": [
+        "workbuddy",
+        "wb2a"
+      ]
+    },
+    {
+      "id": "cpa-persona-provider",
+      "category": "infrastructure",
+      "label": "CPA Persona Provider",
+      "aliases": [
+        "cpa-persona-provider-fix500"
+      ],
+      "terms": [
+        "cpa-persona-provider",
+        "persona provider",
+        "persona routing"
+      ]
+    },
+    {
+      "id": "codex-model-policy",
+      "category": "infrastructure",
+      "label": "Codex Model Policy",
+      "aliases": [
+        "Codex Model Policy"
+      ],
+      "terms": [
+        "codex model policy",
+        "codex-model-policy",
+        "five-hour takeover",
+        "reset activation"
+      ]
+    },
+    {
+      "id": "grok2api",
+      "category": "infrastructure",
+      "label": "Grok2API",
+      "aliases": [],
+      "terms": [
+        "grok2api"
+      ]
+    },
+    {
+      "id": "vps-management",
+      "category": "infrastructure",
+      "label": "VPS Management",
+      "aliases": [
+        "VPS-Management"
+      ],
+      "terms": [
+        "vps management",
+        "ubuntu-us",
+        "iSCSI",
+        "komari",
+        "vps disk",
+        "nginx",
+        "docker"
+      ]
+    },
+    {
+      "id": "network-proxy",
+      "category": "infrastructure",
+      "label": "Network / Proxy",
+      "aliases": [
+        "mihomo-config"
+      ],
+      "terms": [
+        "3x-ui",
+        "tuic",
+        "hysteria",
+        "substore",
+        "mihomo",
+        "warp socks",
+        "reality node"
+      ]
+    },
+    {
+      "id": "cloudflare",
+      "category": "infrastructure",
+      "label": "Cloudflare",
+      "aliases": [],
+      "terms": [
+        "cloudflare",
+        "nodewarden",
+        "cloudflared"
+      ]
+    },
+    {
+      "id": "github-workflows",
+      "category": "infrastructure",
+      "label": "GitHub / CI",
+      "aliases": [
+        "github-workflow",
+        "github-stars"
+      ],
+      "terms": [
+        "github actions",
+        "action storage",
+        "workflow artifacts"
+      ]
+    },
+    {
+      "id": "pixel-aod",
+      "category": "android",
+      "label": "Pixel AOD",
+      "aliases": [
+        "pixel-aod-xposed",
+        "Pixel-AOD-for-OPlus",
+        "ColorOSNotifyIcon",
+        "pixel-aod-coui-port",
+        "pixel-aod-codex",
+        "pixel-aod-m9-implementation",
+        "in-the-pixel-aod-project-implement"
+      ],
+      "terms": [
+        "pixel-aod",
+        "pixel aod",
+        "colorosnotifyicon",
+        "aod peek",
+        "notification peek",
+        "息屏",
+        "通知 peek"
+      ]
+    },
+    {
+      "id": "oplus-fluid-compat",
+      "category": "android",
+      "label": "OPlusFluidCompat",
+      "aliases": [
+        "OPlusFluidCompat"
+      ],
+      "terms": [
+        "oplusfluidcompat",
+        "fluid cloud",
+        "travelengine",
+        "oneplus13locational",
+        "流体云"
+      ]
+    },
+    {
+      "id": "android-device",
+      "category": "android",
+      "label": "Android Device",
+      "aliases": [
+        "android-adb-diagnostics",
+        "Xposed_test"
+      ],
+      "terms": [
+        "kernelsu",
+        "play integrity",
+        "adb",
+        "oneplus",
+        "oxygenos"
+      ]
+    },
+    {
+      "id": "pingfang-one",
+      "category": "fonts",
+      "label": "PingFangOne",
+      "aliases": [
+        "PingFangOne",
+        "windows-font-replacement",
+        "Fonts-Fusion"
+      ],
+      "terms": [
+        "pingfangone",
+        "pingfangsans",
+        "segoeui",
+        "replace-systemfonts",
+        "samsungone",
+        "苹方字体",
+        "字体替换"
+      ]
+    },
+    {
+      "id": "font-tools",
+      "category": "fonts",
+      "label": "Font Tools",
+      "aliases": [],
+      "terms": [
+        "fonttools",
+        "variable font",
+        "font fusion"
+      ]
+    },
+    {
+      "id": "music-library",
+      "category": "media",
+      "label": "Music / Lyrics",
+      "aliases": [
+        "music_temp",
+        "music-lyrics-rebuild"
+      ],
+      "terms": [
+        "music lyrics",
+        "lyrics-rebuild",
+        "lyrics",
+        "lrc",
+        "music_temp",
+        "歌词",
+        "音乐库"
+      ]
+    },
+    {
+      "id": "emby",
+      "category": "media",
+      "label": "Emby",
+      "aliases": [
+        "embyToLocalPlayer"
+      ],
+      "terms": [
+        "emby",
+        "localplayer"
+      ]
+    },
+    {
+      "id": "showly",
+      "category": "media",
+      "label": "Showly / Floppy",
+      "aliases": [
+        "showly-floppy",
+        "Floppy"
+      ],
+      "terms": [
+        "showly",
+        "floppy"
+      ]
+    },
+    {
+      "id": "ryot",
+      "category": "media",
+      "label": "Ryot",
+      "aliases": [
+        "showly-ryot"
+      ],
+      "terms": [
+        "ryot"
+      ]
+    },
+    {
+      "id": "anx-reader",
+      "category": "media",
+      "label": "Anx Reader",
+      "aliases": [
+        "anx-reader-develop"
+      ],
+      "terms": [
+        "anx-reader",
+        "anx reader"
+      ]
+    },
+    {
+      "id": "english-learning",
+      "category": "learning",
+      "label": "English Learning",
+      "aliases": [
+        "language-learning",
+        "english-tutoring"
+      ],
+      "terms": [
+        "english learning",
+        "english tutor",
+        "language learning",
+        "英语学习",
+        "英语口语",
+        "英语辅导"
+      ]
+    },
+    {
+      "id": "embedded-interview",
+      "category": "embedded",
+      "label": "Embedded Interview",
+      "aliases": [
+        "embedded-interview-preparation",
+        "embedded-interview-question-bank",
+        "lvgl-lv-disp-driv-t-freertos"
+      ],
+      "terms": [
+        "embedded interview",
+        "interview question",
+        "interview preparation",
+        "面试题",
+        "嵌入式面试"
+      ]
+    },
+    {
+      "id": "dtu-demo",
+      "category": "embedded",
+      "label": "DTU Demo",
+      "aliases": [
+        "DTU_test"
+      ],
+      "terms": [
+        "dtu_test",
+        "dtu demo",
+        "modbus",
+        "dtu project"
+      ]
+    },
+    {
+      "id": "bluetooth-printer",
+      "category": "embedded",
+      "label": "Bluetooth Printer",
+      "aliases": [
+        "bt_printer_test"
+      ],
+      "terms": [
+        "bt_printer_test",
+        "bluetooth printer",
+        "thermal printer"
+      ]
+    },
+    {
+      "id": "stm32-demo",
+      "category": "embedded",
+      "label": "STM32 Demo",
+      "aliases": [
+        "STM32CubeIDE_Test",
+        "F103RCT6_test",
+        "stm32f103zet6-stm32cubeide-for-visual-studio-code"
+      ],
+      "terms": [
+        "stm32",
+        "stm32cubeide",
+        "hal library"
+      ]
+    },
+    {
+      "id": "freertos-demo",
+      "category": "embedded",
+      "label": "FreeRTOS Demo",
+      "aliases": [
+        "freeRTOS_test"
+      ],
+      "terms": [
+        "freertos",
+        "task synchronization"
+      ]
+    },
+    {
+      "id": "personal-notes",
+      "category": "personal",
+      "label": "Personal Notes",
+      "aliases": [],
+      "terms": [
+        "sertraline",
+        "atomoxetine",
+        "adhd",
+        "gerd",
+        "舍曲林",
+        "托莫西汀",
+        "胃食管反流"
+      ]
+    },
+    {
+      "id": "verification-tests",
+      "category": "review",
+      "label": "Verification Records",
+      "aliases": [
+        "connector-test",
+        "cmem-relay-smoke",
+        "scope-regression",
+        "luna-probe"
+      ],
+      "terms": []
+    },
+    {
+      "id": "unclassified",
+      "category": "review",
+      "label": "Needs Review",
+      "aliases": [],
+      "terms": []
+    }
+  ]
+}

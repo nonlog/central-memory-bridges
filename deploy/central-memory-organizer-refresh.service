@@ -1,0 +1,21 @@
+[Unit]
+Description=Incremental memory taxonomy and request grouping
+After=network-online.target claude-mem.service
+RequiresMountsFor=/srv/storage/shared
+[Service]
+Type=oneshot
+WorkingDirectory=/root/apps/central-memory-bridges/memory-organizer
+Environment=CLAUDE_MEM_DATA_DIR=/srv/storage/shared/us-migrated/claude-mem
+Environment=MEMORY_ORGANIZER_STATE=/srv/storage/shared/us-migrated/claude-mem/organizer
+Environment=MEMORY_ORGANIZER_AI=1
+Environment=MEMORY_ORGANIZER_AI_LIMIT=300
+Environment=MEMORY_ORGANIZER_GROUPS=1
+Environment=MEMORY_ORGANIZER_MERGE=1
+ExecStart=/usr/bin/python3 /root/apps/central-memory-bridges/memory-organizer/organizer.py refresh
+TimeoutStartSec=20min
+UMask=0077
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+MemoryMax=384M
+CPUQuota=50%
