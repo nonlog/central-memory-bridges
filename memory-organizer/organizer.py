@@ -99,8 +99,8 @@ class Taxonomy:
         if cwd and not fixed:return cwd,.98,'session-cwd',sorted(set(tags))
         if fixed and cwd and fixed!=cwd:
             own_patterns=self.patterns.get(fixed,[]); other_patterns=self.patterns.get(cwd,[])
-            if any(p.search((title+' '+body).casefold()) for p in own_patterns) and not any(p.search(title.casefold()) for p in other_patterns):
-                return fixed,.94,'explicit-project-supported',sorted(set(tags))
+            if not any(p.search(title.casefold()) for p in other_patterns):
+                return fixed,.94,'recorded-project-preferred',sorted(set(tags))
             return 'unclassified',.3,'conflicting-project-cwd',sorted(set(tags))
         scores={}
         lower_title=title.casefold(); lower_body=body.casefold(); files=str(row.get('files_read',''))+' '+str(row.get('files_modified',''))
