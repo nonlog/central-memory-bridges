@@ -1,17 +1,18 @@
 {
   "version": 1,
   "categories": {
-    "memory": "记忆系统",
-    "agents": "Agent 与工具",
-    "infrastructure": "服务与基础设施",
-    "desktop": "Windows 与桌面项目",
-    "android": "Android 与模块",
-    "embedded": "嵌入式与面试",
-    "fonts": "字体",
-    "media": "媒体与内容",
-    "learning": "语言学习",
-    "personal": "个人笔记",
-    "review": "待复核与验证"
+    "memory": "Memory systems",
+    "agents": "Agents & tools",
+    "infrastructure": "Infrastructure",
+    "desktop": "Windows & desktop",
+    "android": "Android & modules",
+    "embedded": "Embedded & interviews",
+    "fonts": "Typography",
+    "media": "Media & content",
+    "learning": "Language learning",
+    "personal": "Personal notes",
+    "reference": "General & reference",
+    "review": "Verification & unassigned"
   },
   "projects": [
     {
@@ -765,9 +766,120 @@
     {
       "id": "unclassified",
       "category": "review",
-      "label": "Needs Review",
+      "label": "No confirmed project",
       "aliases": [],
       "terms": []
+    },
+    {
+      "id": "general-reference",
+      "label": "General Reference",
+      "category": "reference",
+      "description": "Reusable technical knowledge or factual notes with no specific project",
+      "aliases": [],
+      "terms": [
+        "general reference"
+      ]
+    },
+    {
+      "id": "cross-project-notes",
+      "label": "Cross-project Notes",
+      "category": "reference",
+      "description": "Notes genuinely covering multiple independent projects or a portfolio",
+      "aliases": [],
+      "terms": [
+        "cross-project"
+      ]
+    },
+    {
+      "id": "conversation-meta",
+      "label": "Conversation Notes",
+      "category": "reference",
+      "description": "Acknowledgments, coordination and control commands without substantive project content",
+      "aliases": [],
+      "terms": [
+        "conversation metadata"
+      ]
+    },
+    {
+      "id": "obsidian",
+      "label": "Obsidian",
+      "category": "media",
+      "description": "Obsidian vaults, plugins, themes and notes management",
+      "aliases": [],
+      "terms": [
+        "Obsidian",
+        "obsidian vault"
+      ]
+    },
+    {
+      "id": "ccstatusline",
+      "label": "CCStatusline",
+      "category": "agents",
+      "description": "Claude Code ccstatusline customization and rendering",
+      "aliases": [],
+      "terms": [
+        "ccstatusline"
+      ]
+    },
+    {
+      "id": "laser-engraver",
+      "label": "Laser Engraver",
+      "category": "embedded",
+      "description": "Grbl ESP32 laser engraving or CNC project",
+      "aliases": [],
+      "terms": [
+        "Grbl_Esp32",
+        "grbl-esp32",
+        "laser engraving"
+      ]
+    },
+    {
+      "id": "environment-monitor",
+      "label": "Environment Monitor",
+      "category": "embedded",
+      "description": "Multi-node sensor environment monitoring project with MQTT and RTOS",
+      "aliases": [],
+      "terms": [
+        "environment monitor",
+        "multi-node environment",
+        "environment monitoring"
+      ]
+    },
+    {
+      "id": "codex-auto-retry",
+      "label": "Codex Auto Retry",
+      "category": "agents",
+      "description": "Codex external automatic retry/recovery application",
+      "aliases": [],
+      "terms": [
+        "codex-auto-retry",
+        "codex auto retry"
+      ]
+    },
+    {
+      "id": "nodewarden",
+      "label": "Nodewarden / Bitwarden",
+      "category": "infrastructure",
+      "description": "Self-hosted Cloudflare Nodewarden or Bitwarden password/passkey service",
+      "aliases": [],
+      "terms": [
+        "Nodewarden",
+        "Bitwarden"
+      ]
+    },
+    {
+      "id": "chatgpt-web-tools",
+      "label": "ChatGPT Web Tools",
+      "category": "agents",
+      "description": "ChatGPT userscripts, project label and conversation UI tools",
+      "aliases": [],
+      "terms": [
+        "ChatGPT userscript",
+        "ChatGPT UI script"
+      ]
     }
+  ],
+  "previous_classifier_rules": [
+    "2d2e63d1fb98"
   ]
 }

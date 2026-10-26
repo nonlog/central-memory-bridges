@@ -8,7 +8,7 @@ WorkingDirectory=/root/apps/central-memory-bridges/memory-organizer
 Environment=CLAUDE_MEM_DATA_DIR=/srv/storage/shared/us-migrated/claude-mem
 Environment=MEMORY_ORGANIZER_STATE=/srv/storage/shared/us-migrated/claude-mem/organizer
 Environment=MEMORY_ORGANIZER_AI=1
-Environment=MEMORY_ORGANIZER_AI_LIMIT=60
+Environment=MEMORY_ORGANIZER_AI_LIMIT=600
 Environment=MEMORY_ORGANIZER_GROUPS=1
 Environment=MEMORY_ORGANIZER_MERGE=1
 ExecStart=/usr/bin/python3 /root/apps/central-memory-bridges/memory-organizer/organizer.py refresh

@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import {createHash} from 'node:crypto';
 import {patchMyWorkStatus} from './mywork-status-compat.mjs';
 
 const REGISTRY_START = '/* central-memory-bridges:react-registry:start */';
@@ -65,7 +66,7 @@ export function findReactBundles(root) {
     const source=fs.readFileSync(html,'utf8');
     // v15.0.x uses a plain JS view-model and is handled by the legacy overlay.
     if (fs.existsSync(path.join(dir,'view-model.js')) && !source.includes('/work-view/assets/index-')) continue;
-    const scripts=[...source.matchAll(/src="\/work-view\/assets\/(index-[A-Za-z0-9_-]+\.js)"/g)];
+    const scripts=[...source.matchAll(/src="\/work-view\/assets\/(index-[A-Za-z0-9_.-]+\.js)"/g)];
     if(scripts.length!==1)throw new Error('React My Work entry script changed');
     const js=path.join(dir,'assets',scripts[0][1]);
     if(!fs.existsSync(js))throw new Error('Missing React My Work bundle '+js);
@@ -77,17 +78,19 @@ export function findReactBundles(root) {
 export function updateReactBundle(bundlePath, assetSourceDir, check) {
   const current=fs.readFileSync(bundlePath,'utf8');
   const next=patchReactBundle(current);
-  const icons=REQUIRED_ICONS.map(icon=>({
-    from:path.join(assetSourceDir,icon+'.svg'),
-    to:path.join(path.dirname(bundlePath),'agents','bridge-'+icon+'.svg'),
-  }));
+  const assets=path.dirname(bundlePath),htmlPath=path.join(assets,'..','index.html');
+  const digest=createHash('sha256').update(next).digest('hex').slice(0,16);
+  const filename='index-cmb-'+digest+'.js',target=path.join(assets,filename);
+  const html=fs.readFileSync(htmlPath,'utf8');
+  const oldRef='/work-view/assets/'+path.basename(bundlePath),newRef='/work-view/assets/'+filename;
+  const newHtml=html.replace(oldRef,newRef);
+  const icons=REQUIRED_ICONS.map(icon=>({from:path.join(assetSourceDir,icon+'.svg'),to:path.join(assets,'agents','bridge-'+icon+'.svg')}));
   const present=icons.every(({from,to})=>fs.existsSync(from)&&fs.existsSync(to)&&fs.readFileSync(from).equals(fs.readFileSync(to)));
-  if(check) return next===current && present;
-  for(const {from,to} of icons) {
-    const content=fs.readFileSync(from);
-    fs.mkdirSync(path.dirname(to),{recursive:true});
-    if(!fs.existsSync(to)||!fs.readFileSync(to).equals(content)) fs.writeFileSync(to,content);
-  }
-  if(next!==current)fs.writeFileSync(bundlePath,next);
+  if(check)return next===current && present && html.includes(newRef) && fs.existsSync(target) && fs.readFileSync(target,'utf8')===next;
+  for(const {from,to} of icons){const content=fs.readFileSync(from);fs.mkdirSync(path.dirname(to),{recursive:true});if(!fs.existsSync(to)||!fs.readFileSync(to).equals(content))fs.writeFileSync(to,content);}
+  // Never reuse a hashed URL for different bytes. An ordinary reload must pick
+  // up the new release even behind a browser or CDN cache.
+  if(!fs.existsSync(target)||fs.readFileSync(target,'utf8')!==next)fs.writeFileSync(target,next);
+  if(newHtml!==html){fs.writeFileSync(htmlPath+'.tmp',newHtml);fs.renameSync(htmlPath+'.tmp',htmlPath);}
   return true;
 }

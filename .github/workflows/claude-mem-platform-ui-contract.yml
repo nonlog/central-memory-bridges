@@ -65,7 +65,7 @@ jobs:
           fi
           CLAUDE_MEM_BRANDING_NO_ICON_DOWNLOAD=1 node deploy/apply-claude-mem-viewer-branding.mjs --root "$ROOT"
           node deploy/apply-claude-mem-viewer-branding.mjs --root "$ROOT" --check
-          js=$(find "$ROOT/plugin/ui/work-view/assets" -maxdepth 1 -name 'index-*.js' -print -quit)
+          js=$(find "$ROOT/plugin/ui/work-view/assets" -maxdepth 1 -name 'index-cmb-*.js' -print -quit)
           test -n "$js"
           node --check "$js"
           test "$(find "$ROOT/plugin/ui/work-view/assets/agents" -name 'bridge-*.svg' | wc -l)" -eq 8

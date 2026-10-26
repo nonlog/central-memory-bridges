@@ -2,7 +2,7 @@ name: Memory organizer integrity
 on:
   push:
     branches: [master, 'codex/**']
-    paths: ['memory-organizer/**', 'deploy/*organizer*', 'deploy/mywork-status-compat.mjs', 'deploy/react-mywork-compat.mjs', 'tests/mywork-status.test.mjs', '.github/workflows/memory-organizer.yml']
+    paths: ['memory-organizer/**', 'deploy/*organizer*', 'deploy/mywork-status-compat.mjs', 'deploy/react-mywork-compat.mjs', 'tests/mywork-status.test.mjs', 'tests/organizer-ui.browser.mjs', '.github/workflows/memory-organizer.yml']
   pull_request:
 permissions:
   contents: read
@@ -29,6 +29,19 @@ jobs:
           tar -xzf "$d/claude-mem-15.1.0.tgz" -C "$d" package/plugin/ui/work-view package/plugin/ui/viewer.html
           CLAUDE_MEM_BRANDING_NO_ICON_DOWNLOAD=1 node deploy/apply-claude-mem-viewer-branding.mjs --root "$d/package"
           node deploy/apply-claude-mem-viewer-branding.mjs --root "$d/package" --check
-          j=$(find "$d/package/plugin/ui/work-view/assets" -name 'index-*.js' -print -quit)
+          j=$(find "$d/package/plugin/ui/work-view/assets" -name 'index-cmb-*.js' -print -quit)
           node --check "$j"
-          grep -q 'truthful-mywork-status:v1' "$j"
+          grep -q 'truthful-mywork-status:v2' "$j"
+          echo "CM_UI_FIXTURE=$d/package" >> "$GITHUB_ENV"
+      - name: Install browser test dependencies on GitHub Actions
+        run: |
+          npm install --no-save --ignore-scripts --no-audit --no-fund --legacy-peer-deps playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Verify native rendering, navigation, themes and responsive layout
+        run: node tests/organizer-ui.browser.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: organizer-browser-evidence
+          path: .artifacts/*.png
+          retention-days: 3

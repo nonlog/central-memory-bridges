@@ -143,6 +143,10 @@ def scan():
     tax=Taxonomy();db=index_db();src=source_db();src.execute('BEGIN')
     sessions={r['id']:dict(r) for r in src.execute('SELECT * FROM sdk_sessions')}
     old={(r['kind'],r['id']):(r['source_hash'],r['method']) for r in db.execute('SELECT kind,id,source_hash,method FROM records')}
+    previous_rules=set(tax.raw.get('previous_classifier_rules',[]))
+    saved_rules=db.execute("SELECT value FROM settings WHERE key='classifier_rules'").fetchone()
+    if saved_rules:previous_rules.add(saved_rules[0])
+    has_audit=db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='review_audit'").fetchone() is not None
     seen=set();changed=0;total=0;aliases=collections.defaultdict(set)
     for s in sessions.values():
         canonical=tax.session_project(s)
@@ -152,6 +156,14 @@ def scan():
         orig=r.get('project') or s.get('project') or ''
         fingerprint=hashlib.sha256(dumps([tax.rules_hash,orig,r['_title'],r['_text'],s.get('cwd'),r.get('files_read'),r.get('files_modified')]).encode()).hexdigest()
         if key in old and old[key][0]==fingerprint:continue
+        if key in old and old[key][1] in ('context-reviewed','context-insufficient'):
+            # Expanding categories must not throw away a completed contextual
+            # review of otherwise unchanged source content.
+            legacy=[hashlib.sha256(dumps([rule,orig,r['_title'],r['_text'],s.get('cwd'),r.get('files_read'),r.get('files_modified')]).encode()).hexdigest() for rule in previous_rules]
+            if old[key][0] in legacy:
+                db.execute('UPDATE records SET source_hash=? WHERE kind=? AND id=?',(fingerprint,*key))
+                if has_audit:db.execute('UPDATE OR IGNORE review_audit SET source_hash=? WHERE kind=? AND id=? AND source_hash=?',(fingerprint,*key,old[key][0]))
+                continue
         project,confidence,method,tags=tax.classify(r,s);category=tax.projects[project]['category']
         platform=s.get('platform_source') or 'unknown';content=s.get('content_session_id') or ''
         session_key=dumps(['conversation',platform,content]) if content else ''
@@ -177,6 +189,7 @@ def scan():
     db.commit(); inherited=propagate_context(db,tax)
     result={'scanned':total,'updated':changed,'session_context':inherited,'projects':db.execute('select count(distinct project) from records').fetchone()[0],
             'needs_review':db.execute("select count(*) from records where project='unclassified'").fetchone()[0]}
+    db.execute('INSERT OR REPLACE INTO settings VALUES(?,?)',('classifier_rules',tax.rules_hash))
     db.execute('INSERT OR REPLACE INTO settings VALUES(?,?)',('last_scan',dumps({'at':utc(),**result})));db.commit();db.close();src.close();return result
 
 
@@ -369,7 +382,10 @@ def refresh():
         try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
         except BlockingIOError:return {'skipped':'already-running'}
         result={'scan':scan()}
-        if os.environ.get('MEMORY_ORGANIZER_AI','0')=='1':result['ai']=classify_ai(int(os.environ.get('MEMORY_ORGANIZER_AI_LIMIT','60')))
+        if os.environ.get('MEMORY_ORGANIZER_AI','0')=='1':
+            from reviewer import run
+            result['ai']=run(limit=int(os.environ.get('MEMORY_ORGANIZER_AI_LIMIT','600')),workers=6,batch_size=32)
+            result['second_review']=run(limit=200,workers=4,batch_size=16,phase=2)
         if os.environ.get('MEMORY_ORGANIZER_GROUPS','0')=='1':result['groups']=group_requests(2)
         if os.environ.get('MEMORY_ORGANIZER_MERGE','0')=='1':result['merge']=merge_aliases(True,500)
         return result
@@ -432,11 +448,29 @@ def native_list(kind,q):
     return {'items':items,'hasMore':len(rows)>limit,'offset':offset,'limit':limit}
 
 
+_activity_lock=threading.Lock()
+_activity_cache={'at':0,'snapshot':None}
+def activity_snapshot():
+    from lifecycle import enrich
+    with _activity_lock:
+        if time.monotonic()-_activity_cache['at']<2 and _activity_cache['snapshot'] is not None:return _activity_cache['snapshot']
+        snapshot=worker_get('/api/work-view')
+        with contextlib.closing(source_db()) as db:snapshot=enrich(snapshot,db)
+        _activity_cache.update(at=time.monotonic(),snapshot=snapshot)
+        return snapshot
+
+
 def overview():
     tax=Taxonomy();db=index_db()
     projects=[dict(r) for r in db.execute('SELECT project,category,count(*) count,sum(kind=\'observation\') observations,sum(method=\'model-evidence\') ai_count FROM records GROUP BY project,category ORDER BY count DESC')]
     for p in projects:p['label']=tax.projects[p['project']]['label'];p['category_label']=tax.raw['categories'][p['category']]
     result={'projects':projects,'categories':tax.raw['categories'],'totals':dict(db.execute('select kind,count(*) from records group by kind').fetchall()),'lastScan':json.loads(db.execute("select value from settings where key='last_scan'").fetchone()[0]) if db.execute("select 1 from settings where key='last_scan'").fetchone() else None,'review':db.execute("select count(*) from records where project='unclassified'").fetchone()[0],'aliases':db.execute('select count(*) from aliases where approved=1').fetchone()[0]}
+    # Review completion is separate from whether a project can be determined.
+    # Never call an automatically reviewed general note a manual-review backlog.
+    has_audit=db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='review_audit'").fetchone()
+    result['reviewed']=db.execute("SELECT count(*) FROM (SELECT kind,id FROM review_audit GROUP BY kind,id)").fetchone()[0] if has_audit else 0
+    progress=db.execute("SELECT value FROM settings WHERE key='review_progress'").fetchone()
+    result['reviewProgress']=json.loads(progress[0]) if progress else None
     db.close();return result
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -445,6 +479,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def send(self,data,status=200,ctype='application/json; charset=utf-8'):
         payload=data if isinstance(data,bytes) else dumps(data).encode();self.send_response(status);self.send_header('Content-Type',ctype);self.send_header('Content-Length',str(len(payload)));self.send_header('Cache-Control','private, no-store');self.send_header('X-Content-Type-Options','nosniff');self.send_header('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'self'");self.end_headers()
         if self.command!='HEAD':self.wfile.write(payload)
+    def work_events(self):
+        self.send_response(200);self.send_header('Content-Type','text/event-stream; charset=utf-8');self.send_header('Cache-Control','private, no-store');self.send_header('X-Accel-Buffering','no');self.end_headers()
+        if self.command=='HEAD':return
+        last=None
+        try:
+            for _ in range(240):
+                data=activity_snapshot();sig=data.get('revision')
+                if sig!=last:
+                    self.wfile.write(('event: work-view\ndata: '+dumps(data)+'\n\n').encode());last=sig
+                self.wfile.write(('event: heartbeat\ndata: '+dumps({'at':utc(),'source':data.get('source',{})})+'\n\n').encode());self.wfile.flush();time.sleep(5)
+        except (BrokenPipeError,ConnectionResetError,TimeoutError,OSError):return
+
     def do_HEAD(self):self.do_GET()
     def do_POST(self):self.send({'error':'Read-only interface'},405)
     def do_GET(self):
@@ -452,9 +498,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         try:
             if path=='/health':return self.send({'status':'ok','service':'memory-organizer'})
             if path in ('/organizer/','/organizer'):return self.send((HERE/'index.html').read_bytes(),ctype='text/html; charset=utf-8')
-            if path in ('/organizer/app.js','/organizer/nav.js','/organizer/style.css'):
+            if path in ('/organizer/app.js','/organizer/nav.js','/organizer/style.css','/organizer/integration.css'):
                 return self.send((HERE/path.rsplit('/',1)[1]).read_bytes(),ctype='text/javascript; charset=utf-8' if path.endswith('.js') else 'text/css; charset=utf-8')
             if path=='/organizer/api/overview':return self.send(overview())
+            if path=='/api/work-view':return self.send(activity_snapshot())
+            if path=='/api/work-view/events':return self.work_events()
             if path=='/organizer/api/record':
                 kind=q.get('kind',[''])[0];id=int(q.get('id',['0'])[0]);data=raw_record(kind,id)
                 return self.send({'record':data} if data else {'error':'not found'},200 if data else 404)
