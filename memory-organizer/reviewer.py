@@ -3,7 +3,7 @@
 All writes are to the organizer index. The source database is strictly read-only.
 """
 from __future__ import annotations
-import argparse, bisect, collections, concurrent.futures, hashlib, json, math, os, pathlib, random, sqlite3, time
+import argparse, bisect, collections, concurrent.futures, hashlib, json, math, os, pathlib, random, re, sqlite3, time
 import organizer as core
 
 VERSION = 'context-review-v3'
@@ -48,6 +48,18 @@ def context_for(row,context):
     return {'project':s.get('project',''),'cwd':s.get('cwd') or '',
             'user_context':near or [compact(s.get('user_prompt'),300)],'nearby_evidence':neighbors}
 
+def constrain_personal_scope(project,row,reason):
+    if project!='personal-notes':return project,reason
+    title=str(row.get('title','')).strip()
+    text=(title+' '+str(row.get('text',''))).lower()
+    if 'powershell' in text and ('profile' in text or 'psreadline' in text):
+        return 'terminal','PowerShell profile configuration is shell tooling, not personal background.'
+    if re.search(r'waku.*windows|windows.*waku',text):
+        return 'windows-management','Windows application release monitoring is desktop software management.'
+    if title.lower() in ('session','remember this durable information for future sessions.') or re.search(r'empty (user_request|user request|session)|no user request',text):
+        return 'conversation-meta','Empty or content-free conversation metadata is not a personal-profile note.'
+    return project,reason
+
 def validate_answer(answer,rows,allowed):
     valid={};known={r['key']:r for r in rows}
     for item in answer.get('a',[]) if isinstance(answer,dict) else []:
@@ -56,6 +68,8 @@ def validate_answer(answer,rows,allowed):
         if key not in known or key in valid or project not in allowed:continue
         if isinstance(confidence,bool) or not isinstance(confidence,(int,float)) or not math.isfinite(confidence) or not 0<=confidence<=1:continue
         if not isinstance(reason,str) or not reason.strip():continue
+        project,reason=constrain_personal_scope(project,known[key],reason)
+        if project not in allowed:continue
         valid[key]=(project,float(confidence),compact(reason,180))
     return valid
 

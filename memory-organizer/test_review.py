@@ -34,6 +34,12 @@ class ReviewTests(unittest.TestCase):
     result=publish_review.publish(stage_path);self.assertEqual(result['published'],1);self.assertEqual(result['conflicts'],1)
     db=core.index_db();self.assertEqual(db.execute('SELECT project FROM records WHERE id=1').fetchone()[0],'general-reference');self.assertEqual(db.execute('SELECT project FROM records WHERE id=2').fetchone()[0],'unclassified');db.close()
    finally:core.STATE=before
+ def test_windows_profile_is_not_personal_profile(self):
+  result=reviewer.validate_answer({'a':[['x','personal-notes',.95,'user profile']]},[{'key':'x','title':'PowerShell profile error on Set-PSReadLineOption'}],{'personal-notes','terminal'})
+  self.assertEqual(result['x'][0],'terminal')
+ def test_empty_notes_are_not_personal_background(self):
+  self.assertEqual(reviewer.constrain_personal_scope('personal-notes',{'title':'Session'},'empty')[0],'conversation-meta')
+  self.assertEqual(reviewer.constrain_personal_scope('personal-notes',{'title':'Resume career experience'},'career')[0],'personal-notes')
  def test_audit_schema_is_separate_from_source(self):
   db=sqlite3.connect(':memory:');reviewer.prepare(db);self.assertIsNotNone(db.execute("SELECT name FROM sqlite_master WHERE name='review_audit'").fetchone())
 if __name__=='__main__':unittest.main()
