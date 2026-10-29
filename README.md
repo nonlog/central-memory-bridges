@@ -145,3 +145,13 @@ Production integration was validated beginning on 2026-08-14:
 - ChatGPT MCP: server-side OAuth registration/PKCE/refresh-capable token flow, MCP initialize/tools-list, central-memory read, and real write were verified. Final write marker `CHATGPT_MCP_FINAL_E2E_20260814_0957` returned `commit_status=committed` with a central observation; a second fresh OAuth/MCP client read the marker back, and the async claude-mem summary completed. A real ChatGPT Web conversation subsequently validated automatic Claude-mem recall after the custom MCP App was published in the Business workspace.
 - Viewer branding: the patcher passed Node syntax/idempotence checks, was deployed to the central `claude-mem` marketplace and active cache Viewer, and the live Worker response was verified after controlled restarts. The official-update flow must fail and roll back if the Worker platform identity patch cannot be reapplied; icon branding can still fail non-fatally. Legacy OMP source branding remains only to identify historical records.
 - Memory administration: the shared design uses only upstream Worker DELETE endpoints; Claude Code/Codex receive the capability through a separate stdio MCP and OpenClaw through an optional tool-only plugin, leaving all official memory integrations untouched.
+# Unified cross-project recall
+
+The optional **Unified Memory Recall Bridge** integrates Claude-mem's global
+operation history with Hindsight's per-project and central Banks. It preserves
+upstream capture, Git ingest, and Knowledge Pages, and runs read-only queries
+with bounded budgets, source-ID deduplication, and failure fallback.
+
+Install in safe shadow mode and see the testing/rollout instructions in
+[`recall-bridge/README.md`](recall-bridge/README.md). The bridge does not
+change either upstream plugin, and it never stores API tokens in its config.

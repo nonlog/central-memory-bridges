@@ -1,6 +1,6 @@
 {
   "name": "@nonlog/central-memory-bridges",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Pi package for the central Claude-Mem bridge, with companion bridge sources for a shared remote Worker.",
   "private": true,
   "type": "module",
