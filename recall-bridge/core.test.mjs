@@ -63,6 +63,11 @@ test('explicit project words and Claude-mem project matches route banks', () => 
     workerProjects: ['pixel-aod'],
   });
   assert(inferred.includes('coding-agent::PixelAOD'));
+  const ordinary = chooseBanks({
+    banks, query:'Fix the current button alignment bug',
+    currentBank:'coding-agent::Conduit',maxBanks:5,
+  });
+  assert.deepEqual(ordinary,['coding-agent::Conduit','agent-central']);
 });
 
 test('migrated Claude-mem document IDs deduplicate Hindsight originals', () => {
@@ -172,12 +177,13 @@ test('failing Hindsight degrades to Claude-mem without breaking agent', async ()
   assert(result.diagnostic.failures.some(x=>x.startsWith('bank-list:')));
 });
 
-test('cold or not-yet-created Bank is skipped after successful Bank listing', async () => {
+test('cold or not-yet-created Bank is probed once and benign 404 is ignored', async () => {
   const calls = [];
   const fetcher = async (url) => {
     calls.push(url);
     if (url.includes('/api/search')) return {ok:true,json:async()=>({observations:[],sessions:[],prompts:[]})};
     if (url.endsWith('/banks')) return {ok:true,json:async()=>({banks:[{bank_id:'agent-central'}]})};
+    if (url.includes('NotCreated/memories/recall')) return {ok:false,status:404};
     if (url.includes('/agent-central/memories/recall')) return {ok:true,json:async()=>({results:[{
       id:'mem1',text:'History in the shared Bank',document_id:'cm-summary-00000001',
     }]})};
@@ -188,7 +194,7 @@ test('cold or not-yet-created Bank is skipped after successful Bank listing', as
     projectResolver:()=>({project:'NotCreated',currentBank:'coding-agent::NotCreated'}),
   });
   assert(result.context.includes('agent-central'));
-  assert(!calls.some(x=>x.includes('NotCreated/memories')));
+  assert.equal(calls.filter(x=>x.includes('NotCreated/memories')).length,1);
   assert.equal(result.diagnostic.failures.length,0);
 });
 

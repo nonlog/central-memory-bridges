@@ -129,6 +129,9 @@ export function chooseBanks({ banks, query, project, currentBank, workerProjects
   // first by explicit project names and the global Claude-mem search index.
   for (const item of ranked) {
     if (chosen.length >= maxBanks) break;
+    // The global Claude-mem index already searches across projects.
+    // Do not pay for unrelated project Banks on every ordinary prompt.
+    if (item.score <= 0) continue;
     chosen.push(item.bank);
   }
   return chosen;
@@ -265,6 +268,24 @@ export async function unifiedRecall({ prompt, cwd, harness = 'unknown' }, {
   let banks = [];
   let bankListSucceeded = false;
   try {
+    const hindsightSearch = async bank => {
+      try {
+        const response = await fetchJson(fetcher, config.hindsightUrl + '/v1/default/banks/' + encodeURIComponent(bank) + '/memories/recall', {
+          token, signal, method: 'POST', body: {query:q, budget:config.budget, max_tokens:700},
+        });
+        const candidates = candidatesFromHindsight(bank, response);
+        diagnostic.perSource[bank] = candidates.length;
+        return candidates;
+      } catch (err) {
+        // Official Coding Agents may not have created the cold project Bank.
+        if (!String(err.message || '').includes('HTTP 404')) diagnostic.failures.push(bank + ':' + err.name);
+        return [];
+      }
+    };
+    // Start the two most useful Bank searches immediately, in parallel with
+    // Claude-mem's global index. This avoids serializing 2–5s network calls.
+    const primary = token ? [...new Set([project.currentBank, 'agent-central'])] : [];
+    const primaryJobs = new Map(primary.map(bank => [bank, hindsightSearch(bank)]));
     const jobs = [
       fetchJson(fetcher, config.workerUrl + '/api/search?' + new URLSearchParams({query:q,format:'json',limit:String(config.searchLimit)}), {signal})
         .then(raw => { workerResult = raw; }).catch(err => diagnostic.failures.push('claude-mem:' + err.name)),
@@ -288,19 +309,7 @@ export async function unifiedRecall({ prompt, cwd, harness = 'unknown' }, {
     // Skip a certain 404 rather than delaying the agent or reporting an outage.
     const planned = bankListSucceeded ? selected.filter(bank => banks.includes(bank)) : selected;
     diagnostic.banks = planned;
-    const results = await Promise.all(planned.map(async bank => {
-      try {
-        const response = await fetchJson(fetcher, config.hindsightUrl + '/v1/default/banks/' + encodeURIComponent(bank) + '/memories/recall', {
-          token, signal, method: 'POST', body: { query: q, budget: config.budget, max_tokens: 900 },
-        });
-        const candidates = candidatesFromHindsight(bank, response);
-        diagnostic.perSource[bank] = candidates.length;
-        return candidates;
-      } catch (err) {
-        diagnostic.failures.push(bank + ':' + err.name);
-        return [];
-      }
-    }));
+    const results = await Promise.all(planned.map(bank => primaryJobs.get(bank) || hindsightSearch(bank)));
     const all = [...fromClaude, ...results.flat()];
     // The upstream Claude-mem Codex/Claude Code SessionStart hooks still
     // inject *current-project* history. Do not inject that same migrated
