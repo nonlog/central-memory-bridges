@@ -31,7 +31,9 @@ jobs:
           node --check recall-bridge/hook.mjs
           node --check recall-bridge/telemetry.mjs
           node --check recall-bridge/install.mjs
+          node --check recall-bridge/hindsight-mcp-bootstrap.cjs
       - name: Unit and existing Pi contracts
         run: |
           node --test recall-bridge/core.test.mjs
+          node --test recall-bridge/hindsight-mcp-bootstrap.test.cjs
           node --test pi-extension/contract.test.mjs
