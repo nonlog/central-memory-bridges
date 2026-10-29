@@ -1,0 +1,37 @@
+name: Unified memory recall
+
+on:
+  push:
+    branches: [master, main, 'codex/**']
+    paths:
+      - 'recall-bridge/**'
+      - 'pi-extension/**'
+      - '.github/workflows/unified-recall.yml'
+  pull_request:
+    paths:
+      - 'recall-bridge/**'
+      - 'pi-extension/**'
+      - '.github/workflows/unified-recall.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify bridge syntax
+        run: |
+          node --check recall-bridge/core.mjs
+          node --check recall-bridge/hook.mjs
+          node --check recall-bridge/telemetry.mjs
+          node --check recall-bridge/install.mjs
+      - name: Unit and existing Pi contracts
+        run: |
+          node --test recall-bridge/core.test.mjs
+          node --test pi-extension/contract.test.mjs

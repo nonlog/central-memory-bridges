@@ -5,8 +5,12 @@
 
 import crypto from "node:crypto";
 import path from "node:path";
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { modeFor, readConfig, unifiedRecall } from "../recall-bridge/core.mjs";
+import { recordRecallDiagnostic } from "../recall-bridge/telemetry.mjs";
 import { workerSearchMajor, planMemorySearch, planDumbSearch, formatWorkerSearchResult, compactSmartSearchIndex } from "../shared/worker-search-compat.mjs";
 
 const WORKER = (process.env.CLAUDE_MEM_WORKER_URL || "https://claude-mem.414222.xyz").replace(/\/$/, "");
@@ -186,6 +190,8 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
     project: string;
     memory: string;
     semanticContext: string;
+    unifiedContext: string;
+    unifiedEntryId?: string;
     entryId?: string;
     initialized: boolean;
     anchored: boolean;
@@ -237,6 +243,8 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
     session.needsSummary = false;
     session.lastAssistant = "";
     session.semanticContext = "";
+    session.unifiedContext = "";
+    session.unifiedEntryId = undefined;
     session.observedModel = "";
   };
 
@@ -267,6 +275,17 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
 
   const loadSessionContext = async (session: SessionState) => {
     session.memory = "";
+    if (modeFor(readConfig(), "pi") === "inject") {
+      // Do not inject Claude-mem's historical session context twice. Retain
+      // its separately managed Work State guidance and *all capture hooks*.
+      try {
+        const q = new URLSearchParams({ cwd: session.cwd });
+        const raw = await request("/api/work-state?" + q.toString(), {}, HTTP_TIMEOUT_MS);
+        const state = extractWorkerText(raw).trim();
+        if (state) session.memory = (WORK_STATE_GUIDANCE + "\n" + state).slice(0, MAX_CONTEXT_CHARS);
+      } catch {}
+      return;
+    }
     try {
       const projects = BASE_PROJECT + "," + session.project;
       const query = new URLSearchParams({ projects });
@@ -304,6 +323,7 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
       project: projectForCwd(cwd),
       memory: "",
       semanticContext: "",
+      unifiedContext: "",
       initialized: false,
       anchored: false,
       excluded: true,
@@ -351,6 +371,7 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
 
   const loadSemanticContext = async (session: SessionState, prompt: string) => {
     session.semanticContext = "";
+    if (modeFor(readConfig(), "pi") === "inject") return;
     if (!SEMANTIC_INJECT || prompt.length < 20) return;
     try {
       const semantic = await request(
@@ -498,7 +519,36 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
     });
 
     if (current !== session || !session.anchored || session.excluded) return;
-    const blocks = [session.memory, session.semanticContext].filter((value) => Boolean(value && value.trim()));
+    // Collect once per real, persisted Pi user entry. A shadow lookup must
+    // never change what the model sees, and must not block its first token.
+    const selected = selectEntry(session, ctx, messages);
+    if (selected && selected.prompt.trim() && session.unifiedEntryId !== selected.entry.id) {
+      session.unifiedEntryId = selected.entry.id;
+      const config = readConfig();
+      const mode = modeFor(config, "pi");
+      if (mode !== "off") {
+        const cwd = session.cwd;
+        const prompt = selected.prompt;
+        let hindsightConfig: any = undefined;
+        try {
+          hindsightConfig = JSON.parse(readFileSync(path.join(homedir(), ".hindsight", "coding-agent.json"), "utf8"));
+        } catch {}
+        const lookUp = async () => {
+          const result = await unifiedRecall({ prompt, cwd, harness: "pi" }, { config, hindsightConfig });
+          recordRecallDiagnostic(result.diagnostic);
+          return result.context;
+        };
+        if (mode === "shadow") {
+          void lookUp().catch(() => recordRecallDiagnostic({ mode: "error", harness: "pi" }));
+        } else {
+          try { session.unifiedContext = await lookUp(); } catch {
+            recordRecallDiagnostic({ mode: "error", harness: "pi" });
+          }
+        }
+      }
+    }
+    const blocks = [session.memory, session.semanticContext, session.unifiedContext]
+      .filter((value) => Boolean(value && value.trim()));
     const additionalContext = blocks.join("\n\n").trim();
     if (!additionalContext) return;
 
