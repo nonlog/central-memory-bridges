@@ -52,12 +52,33 @@ function ensureToken(env = process.env, {
   return Boolean(env.HINDSIGHT_API_TOKEN);
 }
 
+/**
+ * Desktop agents may inherit stale proxy settings just like stale credentials.
+ * Refresh user-scoped networking variables at every local MCP launch.
+ * Prefer HKCU entries, but preserve process-only values if unset.
+ */
+function ensureProxyEnvironment(env = process.env, {
+  platform = process.platform,
+  reader = readUserEnvironmentValue,
+} = {}) {
+  if (platform !== 'win32') return env;
+  for (const key of ['HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'NODE_USE_ENV_PROXY']) {
+    const value = reader(key);
+    if (value) env[key] = value;
+  }
+  if ((env.HTTPS_PROXY || env.HTTP_PROXY) && !env.NODE_USE_ENV_PROXY) {
+    env.NODE_USE_ENV_PROXY = '1';
+  }
+  return env;
+}
+
 function launch() {
   if (!ensureToken()) {
     console.error('hindsight: HINDSIGHT_API_TOKEN is unavailable in the Windows user environment.');
     process.exitCode = 1;
     return;
   }
+  ensureProxyEnvironment();
   const official = join(homedir(), '.hindsight', 'coding-agents', 'dist', 'mcp-server.js');
   if (!existsSync(official)) {
     console.error('hindsight: the official MCP runtime is missing; reinstall the official plugin.');
@@ -85,5 +106,5 @@ function launch() {
   }
 }
 
-module.exports = { parseUserEnvironmentValue, readUserEnvironmentValue, ensureToken };
+module.exports = { parseUserEnvironmentValue, readUserEnvironmentValue, ensureToken, ensureProxyEnvironment };
 if (require.main === module) launch();

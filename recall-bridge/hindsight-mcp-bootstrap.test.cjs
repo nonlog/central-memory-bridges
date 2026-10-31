@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
-const { parseUserEnvironmentValue, readUserEnvironmentValue, ensureToken } =
+const { parseUserEnvironmentValue, readUserEnvironmentValue, ensureToken, ensureProxyEnvironment } =
   require('./hindsight-mcp-bootstrap.cjs');
 
 test('parses Windows REG_SZ and REG_EXPAND_SZ values', () => {
@@ -37,4 +37,46 @@ test('unavailable user token falls back to a process token', () => {
 
 test('missing credentials fail closed', () => {
   assert.equal(ensureToken({}, { platform: 'win32', reader: () => '' }), false);
+});
+
+
+test('Windows proxy reload replaces a stale inherited direct-connection environment', () => {
+  const env = { HTTPS_PROXY: 'http://old.invalid:9911', NODE_USE_ENV_PROXY: '0' };
+  const values = {
+    HTTPS_PROXY: 'http://127.0.0.1:7890',
+    HTTP_PROXY: 'http://127.0.0.1:7890',
+    NO_PROXY: 'localhost,127.0.0.1',
+    NODE_USE_ENV_PROXY: '1',
+  };
+  ensureProxyEnvironment(env, { platform: 'win32', reader: key => values[key] || '' });
+  assert.equal(env.HTTPS_PROXY, values.HTTPS_PROXY);
+  assert.equal(env.HTTP_PROXY, values.HTTP_PROXY);
+  assert.equal(env.NO_PROXY, values.NO_PROXY);
+  assert.equal(env.NODE_USE_ENV_PROXY, '1');
+});
+
+test('enables Node proxy support when Windows user proxy is present but flag absent', () => {
+  const env = {};
+  ensureProxyEnvironment(env, {
+    platform: 'win32',
+    reader: key => key === 'HTTPS_PROXY' ? 'http://127.0.0.1:7890' : '',
+  });
+  assert.equal(env.HTTPS_PROXY, 'http://127.0.0.1:7890');
+  assert.equal(env.NODE_USE_ENV_PROXY, '1');
+});
+
+test('preserves explicitly disabled proxy when HKCU contains no override', () => {
+  const env = { HTTPS_PROXY: 'http://127.0.0.1:10080', NODE_USE_ENV_PROXY: '0' };
+  ensureProxyEnvironment(env, { platform: 'win32', reader: () => '' });
+  assert.equal(env.NODE_USE_ENV_PROXY, '0');
+  assert.equal(env.HTTPS_PROXY, 'http://127.0.0.1:10080');
+});
+
+test('does not rewrite proxy on non-Windows systems', () => {
+  const env = { NODE_USE_ENV_PROXY: '0' };
+  ensureProxyEnvironment(env, {
+    platform: 'linux',
+    reader: () => { throw new Error('must not inspect Windows registry'); },
+  });
+  assert.deepEqual(env, { NODE_USE_ENV_PROXY: '0' });
 });
