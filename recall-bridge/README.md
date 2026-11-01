@@ -1,37 +1,31 @@
 # Unified Memory Recall Bridge
 
-## Windows: official Hindsight MCP authentication
+## Windows: official Hindsight MCP and Node.js environment proxy
 
-The official Hindsight Coding Agents MCP reads the bearer credential from
-`apiToken` in its JSON config or `HINDSIGHT_API_TOKEN` in the process
-environment. Codex/Claude Code sessions started **before** the Windows User
-environment variable was set may launch MCP subprocesses without that
-credential, causing `401 Invalid API key (no apiToken is configured)`.
-Changing the Windows User environment does not retroactively update an
-already-running terminal or agent process.
+Use the **official** Hindsight Coding Agents MCP directly; no launcher or
+Hindsight MCP bootstrap wrapper is installed by this project. Its executable
+is `~/.hindsight/coding-agents/dist/mcp-server.js`, launched with `node`
+and the caller's `HINDSIGHT_MCP_HARNESS` setting (`codex`, `claude-code`, etc.).
 
-The user-owned `hindsight-mcp-bootstrap.cjs` avoids writing the token into
-either agent's configuration. On each MCP launch it reads
-`HINDSIGHT_API_TOKEN` from the current user's Windows registry
-(`HKCU\\Environment`), falls back to `HINDSIGHT_API_KEY` or the process
-environment, then starts the **unmodified official** MCP server in a separate
-Node process with stdio forwarded unchanged. It does not log the credential.
+For Node.js 24 on Windows, configure the User environment (for example, from
+PowerShell) rather than patching the official MCP or storing credentials in
+agent config:
 
-After `node recall-bridge/install.mjs install` stages the bootstrap in
-`~/.central-memory-bridges/runtime/`, the native `hindsight` MCP
-registration in both `~/.codex/config.toml` and `~/.claude.json` can
-point to that file instead of
-`~/.hindsight/coding-agents/dist/mcp-server.js`; keep the existing
-`HINDSIGHT_MCP_HARNESS` environment setting for each client.
-Back up these settings before changing them.
+```powershell
+[Environment]::SetEnvironmentVariable('NODE_USE_ENV_PROXY','1','User')
+[Environment]::SetEnvironmentVariable('HTTP_PROXY','http://127.0.0.1:7890','User')
+[Environment]::SetEnvironmentVariable('HTTPS_PROXY','http://127.0.0.1:7890','User')
+```
 
-The direct `hindsight-global` HTTP MCP registration is separate: it still
-uses its own configured bearer token environment variable. This bootstrap
-does not silently alter that HTTP registration.
+The hostname/port are illustrative: use the current local proxy. The Hindsight
+bearer credential must be provided via the existing `HINDSIGHT_API_TOKEN`
+environment, not written into checked-in settings. Changing the User
+environment does not update processes that were already running: restart
+terminal/Agent/MCP processes after changing this configuration. Direct Node.js
+`fetch()` and the unmodified official MCP have both been tested with the
+Windows proxy environment.
 
-Re-registering the official plugin may reset the native MCP executable path.
-Check the MCP registration after an explicit reinstall. Existing running MCP
-processes must be restarted for a changed executable path to take effect.
+The separately configured `hindsight-global` HTTP MCP remains independent.
 
 This is a **read-only** search fan-out for self-hosted Hindsight and upstream
 Claude-mem, with no fork or changes to either upstream service.
