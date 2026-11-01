@@ -1,0 +1,11 @@
+{
+  "name": "claude-mem",
+  "description": "Connect Droid CLI to the shared central Claude-mem memory system.",
+  "version": "1.0.0",
+  "author": {
+    "name": "nonlog"
+  },
+  "homepage": "https://github.com/nonlog/central-memory-bridges",
+  "repository": "https://github.com/nonlog/central-memory-bridges",
+  "keywords": ["droid", "claude-mem", "memory", "recall"]
+}

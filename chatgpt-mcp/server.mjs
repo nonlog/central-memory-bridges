@@ -220,14 +220,14 @@ function requireToolScope(scopes, requiredScope) {
 
 function makeServer(scopes = [], platform = 'chatgpt') {
   const grantedScopes = new Set(scopes);
-  const defaultProject = platform === 'executor' ? 'executor' : (platform === 'gemini' ? 'gemini-web' : (platform.endsWith('-web') ? platform : DEFAULT_PROJECT));
-  const defaultContextProjects = platform === 'executor' ? ['executor'] : (platform === 'gemini' ? ['gemini', 'gemini-web'] : (platform.endsWith('-web') ? [platform] : DEFAULT_CONTEXT_PROJECTS));
+  const defaultProject = platform === 'executor' ? 'executor' : (platform === 'droid' ? 'droid-cli' : (platform === 'gemini' ? 'gemini-web' : (platform.endsWith('-web') ? platform : DEFAULT_PROJECT)));
+  const defaultContextProjects = platform === 'executor' ? ['executor'] : (platform === 'droid' ? ['droid-cli'] : (platform === 'gemini' ? ['gemini', 'gemini-web'] : (platform.endsWith('-web') ? [platform] : DEFAULT_CONTEXT_PROJECTS)));
   const agentIdentityInput = platform === 'executor' ? { agent_identity: z.enum(EXECUTOR_AGENT_IDENTITIES).optional().describe('Self-declared calling agent source, not verified by Executor. Choose your actual agent only if known; omit or select executor when unsure.') } : {};
   const server = new McpServer(
     { name: 'central-claude-mem', version: '1.0.0' },
     {
       instructions: [
-        'This app is the shared long-term memory for ChatGPT, Gemini, Claude Code, Codex, OpenClaw, Hermes, and Pi.',
+        'This app is the shared long-term memory for ChatGPT, Gemini, Claude Code, Codex, Droid CLI, OpenClaw, Hermes, and Pi.',
         'For substantive turns where prior decisions, preferences, deployments, or ongoing work may matter, call memory_context or memory_search before answering.',
         'For each substantive turn worth retaining, before sending the final response call memory_capture once with the current user message and the final response you intend to send, then send that same response to the user.',
         'Use memory_remember for explicit durable facts or decisions. Do not store passwords, API keys, tokens, private keys, or other secrets.',
@@ -269,7 +269,7 @@ function makeServer(scopes = [], platform = 'chatgpt') {
 
   server.registerTool('memory_search', {
     title: 'Semantic memory search',
-    description: 'Search across Claude Code, Codex, OpenClaw, Hermes, Pi, ChatGPT, and other projects in the shared central memory pool. Prefer this when exact prior context could improve the answer.',
+    description: 'Search across Claude Code, Codex, Droid CLI, OpenClaw, Hermes, Pi, ChatGPT, and other projects in the shared central memory pool. Prefer this when exact prior context could improve the answer.',
     inputSchema: { query: z.string().min(1).max(1000), limit: z.number().int().min(1).max(20).optional() },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async ({ query, limit = 8 }) => {
@@ -279,7 +279,7 @@ function makeServer(scopes = [], platform = 'chatgpt') {
 
   server.registerTool('memory_recent', {
     title: 'Recent project memory',
-    description: 'Read recent central memory for a known project such as chatgpt-web, pi-Download, hermes-default, openclaw-main, or another project name.',
+    description: 'Read recent central memory for a known project such as droid-cli, chatgpt-web, pi-Download, hermes-default, openclaw-main, or another project name.',
     inputSchema: { project: z.string().min(1).max(96), limit: z.number().int().min(1).max(20).optional() },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async ({ project, limit = 5 }) => {
@@ -289,8 +289,8 @@ function makeServer(scopes = [], platform = 'chatgpt') {
   });
 
   server.registerTool('memory_context', {
-    title: 'Recall current web-client context',
-    description: 'Retrieve central memory context for the currently connected web client. Call near the start of substantive turns when prior context matters.',
+    title: 'Recall current client context',
+    description: 'Retrieve central memory context for the currently connected client. Call near the start of substantive turns when prior context matters.',
     inputSchema: { projects: z.array(z.string().min(1).max(96)).min(1).max(8).optional() },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async ({ projects }) => {
@@ -301,7 +301,7 @@ function makeServer(scopes = [], platform = 'chatgpt') {
   });
 
   server.registerTool('memory_capture', {
-    title: 'Capture completed web-client turn',
+    title: 'Capture completed client turn',
     description: 'Write a completed user/assistant turn to central claude-mem. Common secrets are redacted. Call once per substantive turn when appropriate.' + (platform === 'executor' ? ' Select agent_identity from the supported choices when you know which Agent you are; omit when unsure to use executor. This label is self-declared, not verified.' : ''),
     inputSchema: {
       user_message: z.string().max(16000),
@@ -374,12 +374,23 @@ app.post(['/oauth/register', '/chatgpt-mcp/oauth/register'], (req, res) => {
   const redirectUris = Array.isArray(req.body?.redirect_uris) ? req.body.redirect_uris.filter(validRedirect) : [];
   if (!redirectUris.length) return oauthError(res, 400, 'invalid_redirect_uri', 'At least one HTTPS or loopback redirect URI is required');
   const iat = now();
-  const payload = { redirect_uris: redirectUris, iat, exp: iat + REFRESH_TTL, token_endpoint_auth_method: 'none' };
+  const clientName = typeof req.body?.client_name === 'string' ? req.body.client_name.trim().slice(0, 128) : '';
+  const clientUri = typeof req.body?.client_uri === 'string' && req.body.client_uri.startsWith('https://') ? req.body.client_uri.slice(0, 512) : '';
+  const payload = {
+    redirect_uris: redirectUris,
+    ...(clientName ? { client_name: clientName } : {}),
+    ...(clientUri ? { client_uri: clientUri } : {}),
+    iat,
+    exp: iat + REFRESH_TTL,
+    token_endpoint_auth_method: 'none',
+  };
   const clientId = seal('cl', payload);
   res.status(201).json({
     client_id: clientId,
     client_id_issued_at: iat,
     redirect_uris: redirectUris,
+    ...(clientName ? { client_name: clientName } : {}),
+    ...(clientUri ? { client_uri: clientUri } : {}),
     token_endpoint_auth_method: 'none',
     grant_types: ['authorization_code', 'refresh_token'],
     response_types: ['code'],

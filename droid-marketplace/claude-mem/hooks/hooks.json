@@ -1,0 +1,69 @@
+{
+  "SessionStart": [
+    {
+      "matcher": "startup|resume|clear|compact",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "node \"${DROID_PLUGIN_ROOT}/hooks/claude-mem-hook.mjs\" start",
+          "timeout": 60
+        }
+      ]
+    },
+    {
+      "matcher": "startup|clear|compact",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "node \"${DROID_PLUGIN_ROOT}/hooks/claude-mem-hook.mjs\" context",
+          "timeout": 60
+        }
+      ]
+    }
+  ],
+  "UserPromptSubmit": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "node \"${DROID_PLUGIN_ROOT}/hooks/claude-mem-hook.mjs\" session-init",
+          "timeout": 20
+        }
+      ]
+    }
+  ],
+  "PostToolUse": [
+    {
+      "matcher": ".*",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "node \"${DROID_PLUGIN_ROOT}/hooks/claude-mem-hook.mjs\" observation",
+          "timeout": 30
+        }
+      ]
+    }
+  ],
+  "Stop": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "node \"${DROID_PLUGIN_ROOT}/hooks/claude-mem-hook.mjs\" summarize",
+          "timeout": 90
+        }
+      ]
+    }
+  ],
+  "Notification": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "node \"${DROID_PLUGIN_ROOT}/hooks/claude-mem-hook.mjs\" summarize",
+          "timeout": 90
+        }
+      ]
+    }
+  ]
+}

@@ -6,12 +6,50 @@ const GEMINI_REDIRECT_HOSTS = new Set([
   'gemini.google.com',
 ]);
 
+const FACTORY_DROID_APP_CALLBACKS = new Set([
+  'https://dev.app.factory.ai/mcp/oauth/callback',
+  'https://staging.app.factory.ai/mcp/oauth/callback',
+  'https://preprod.app.factory.ai/mcp/oauth/callback',
+  'https://app.factory.ai/mcp/oauth/callback',
+  'https://dev.app.eu.factory.ai/mcp/oauth/callback',
+  'https://staging.app.eu.factory.ai/mcp/oauth/callback',
+  'https://preprod.app.eu.factory.ai/mcp/oauth/callback',
+  'https://app.eu.factory.ai/mcp/oauth/callback',
+  'http://localhost:3002/mcp/oauth/callback',
+  'http://127.0.0.1:3002/mcp/oauth/callback',
+]);
+
+function isFactoryDroidClient(registered) {
+  if (registered?.client_name && registered.client_name !== 'Factory Droid') return false;
+  if (registered?.client_uri && registered.client_uri !== 'https://app.factory.ai') return false;
+  const redirects = registered.redirect_uris;
+  if (!Array.isArray(redirects) || redirects.length === 0) return false;
+  let hasFactoryCallback = false;
+  return redirects.every((uri) => {
+    if (FACTORY_DROID_APP_CALLBACKS.has(uri)) {
+      hasFactoryCallback = true;
+      return true;
+    }
+    try {
+      const u = new URL(uri);
+      const port = u.port ? Number(u.port) : 0;
+      return u.protocol === 'http:' && u.hostname === '127.0.0.1' &&
+        u.pathname === '/callback' && (port === 0 || (port >= 54621 && port <= 54720));
+    } catch {
+      return false;
+    }
+  }) && hasFactoryCallback;
+}
+
 export function resolveClientPlatform(clientId, decodeRegisteredClient) {
   if (!clientId || typeof decodeRegisteredClient !== 'function') return 'chatgpt';
+  // Factory publishes this stable Client ID Metadata Document for Droid CLI.
+  if (clientId === 'https://api.factory.ai/mcp/oauth-client') return 'droid';
   try {
     const registered = decodeRegisteredClient(clientId);
     const redirects = registered?.redirect_uris;
     if (!Array.isArray(redirects) || redirects.length === 0) return 'chatgpt';
+    if (isFactoryDroidClient(registered)) return 'droid';
     const isGemini = redirects.every((uri) => {
       const u = new URL(uri);
       return u.protocol === 'https:' && GEMINI_REDIRECT_HOSTS.has(u.hostname.toLowerCase());

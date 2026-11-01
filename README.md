@@ -7,6 +7,7 @@ Integration source for connecting multiple AI clients to one central `claude-mem
 - `hermes-provider/` — Hermes native `MemoryProvider` adapter. Automatic project-scoped recall and automatic turn capture; explicit cross-project search/recent plus cwd-scoped Work State tools (Worker 13.29+).
 - `pi-extension/` — Pi Coding Agent extension aligned to upstream Claude-mem 13.34+ native prompt capture: persisted Pi `SessionEntry.id` identity, branch/retry-safe admission, privacy-gated context injection, ordered tool/summary capture, progressive recall (`mem_search` / `mem_timeline` / `mem_get_observations`), plus central-only search/recent/remember, optional semantic recall and cwd-scoped Work State tools.
 - `chatgpt-mcp/` — least-privilege remote MCP/OAuth bridge for ChatGPT Business. Exposes only central-memory operations, not host administration; because ChatGPT has no real checkout cwd, it filters upstream cwd-bound Work State instructions instead of misrouting them to the bridge host.
+- `droid-marketplace/` — native Factory Droid plugin marketplace. Its Claude-mem plugin reuses the official Windows CLI hook runtime and the existing authenticated MCP connection; it does not create a second Worker, OAuth secret, or spool relay.
 - `memory-admin-mcp/` — standalone stdio MCP for Claude Code and Codex that adds only exact-ID `claude_mem_forget` beside their official `claude-mem` integrations.
 - `openclaw-memory-admin/` — optional OpenClaw tool-only plugin exposing the same exact-ID `claude_mem_forget` contract without modifying the official OpenClaw `claude-mem` plugin.
 - `deploy/` — sanitized deployment examples plus repeatable local deployment helpers. Real credentials and runtime token state are intentionally excluded.
@@ -26,8 +27,13 @@ Typical project scopes:
 - Grok Web: `grok-web`
 - Muse Web: `muse-web`
 - Executor (default when Agent is not selected): `executor`
+- Droid CLI: `droid-cli` for manual MCP memory writes; lifecycle captures retain the active working-directory project.
 
 Claude Code, Codex, and OpenClaw continue to use their official `claude-mem` integrations for recall/capture/search. This repository adds only a narrow optional deletion layer beside them; it does not patch or fork the official integrations.
+
+### Droid CLI plugin
+
+Add the local marketplace with `droid plugin marketplace add D:\Workspace\central-memory-bridges\droid-marketplace`, then install `claude-mem@droid-marketplace` with `--scope user`. The plugin uses the official `%LOCALAPPDATA%\claude-mem\bin\claude-mem.exe` hook runtime and the already-authenticated `claude-mem` MCP server. It injects central context, records prompts and tool observations, and summarizes visible assistant output from Droid's JSONL transcript. It deliberately does not declare another MCP server, and it coexists with the existing Hindsight hooks. See [`droid-marketplace/claude-mem/README.md`](droid-marketplace/claude-mem/README.md).
 
 The custom OMP bridge was retired on 2026-10-06 and is no longer shipped or supported by this repository. Viewer/source-label compatibility for historical `platform_source=omp` records is retained.
 

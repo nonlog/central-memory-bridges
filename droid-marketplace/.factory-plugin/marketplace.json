@@ -1,0 +1,16 @@
+{
+  "name": "central-memory-bridges",
+  "description": "Personal Droid integrations for the shared central Claude-mem Worker.",
+  "owner": {
+    "name": "nonlog"
+  },
+  "plugins": [
+    {
+      "name": "claude-mem",
+      "description": "Automatic central memory recall, tool observations, and session summaries for Droid CLI.",
+      "source": "./claude-mem",
+      "category": "memory",
+      "tags": ["memory", "claude-mem", "droid"]
+    }
+  ]
+}
