@@ -1,9 +1,17 @@
-name: Claude-mem official release CI approval
+name: Claude-mem manual release compatibility approval
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('Manual claude-mem {0} - {1}', inputs.version, inputs.request_id) || 'Bridge compatibility regression' }}
 
 on:
-  schedule:
-    - cron: '17 */4 * * *'
   workflow_dispatch:
+    inputs:
+      version:
+        description: Official claude-mem npm release to validate
+        type: string
+        required: true
+      request_id:
+        description: Unique manual upgrade request identifier
+        type: string
+        required: true
   push:
     branches: [master]
     paths:
@@ -48,11 +56,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Resolve latest exact official npm release and approval state
+      - name: Resolve exact official npm release and approval state
         shell: bash
+        env:
+          MANUAL_CANDIDATE: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          VERSION=$(npm view claude-mem version --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(String(JSON.parse(s))))')
+          if [[ "$GITHUB_EVENT_NAME" == 'workflow_dispatch' ]]; then
+            VERSION="$MANUAL_CANDIDATE"
+          else
+            VERSION=$(npm view claude-mem version --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(String(JSON.parse(s))))')
+          fi
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           INTEGRITY=$(npm view "claude-mem@$VERSION" dist.integrity --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(String(JSON.parse(s))))')
           [[ "$INTEGRITY" =~ ^sha512- ]]
@@ -96,6 +110,7 @@ jobs:
           python3 -m unittest discover -s hermes-provider -p 'test_*.py' -v
           node --test deploy/check-worker-upgrade.test.mjs
           bash -n deploy/claude-mem-weekly-update.sh
+          bash -n deploy/claude-mem-manual-upgrade.sh
       - name: Test production patches against this exact official Worker and My Work bundle
         if: env.ALREADY_APPROVED == 'false'
         shell: bash
@@ -110,7 +125,7 @@ jobs:
           test -n "$js"
           node --check "$js"
       - name: Publish successful exact-version/source approval
-        if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request' && env.ALREADY_APPROVED == 'false'
+        if: github.ref == 'refs/heads/master' && github.event_name == 'workflow_dispatch' && env.ALREADY_APPROVED == 'false'
         shell: bash
         run: |
           set -euo pipefail

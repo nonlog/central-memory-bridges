@@ -115,9 +115,16 @@ CACHE=$(mktemp -d /tmp/claude-mem-update-npm.XXXXXX)
 export NPM_CONFIG_CACHE="$CACHE"
 export npm_config_cache="$CACHE"
 
-LATEST=$(npm view claude-mem version --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let v=JSON.parse(s); if(Array.isArray(v)) v=v.at(-1); process.stdout.write(String(v||""))})')
+# Supplied only by the explicit UniGetUI -> Scoop -> manual Worker updater.
+# Never silently switch from a user-selected release to a different npm latest.
+if [[ -n "${CLAUDE_MEM_TARGET_VERSION:-}" ]]; then
+  [[ "$CLAUDE_MEM_TARGET_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { log "Invalid manually selected Worker version"; exit 1; }
+  LATEST="$CLAUDE_MEM_TARGET_VERSION"
+else
+  LATEST=$(npm view claude-mem version --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let v=JSON.parse(s); if(Array.isArray(v)) v=v.at(-1); process.stdout.write(String(v||""))})')
+fi
 [[ -n "$LATEST" ]]
-log "Installed=$CURRENT npm-latest=$LATEST"
+log "Installed=$CURRENT candidate=$LATEST"
 
 # Fail closed before backup/service changes. Pull only the CI-generated
 # approval manifest from the trusted public GitHub master branch. Never pull or

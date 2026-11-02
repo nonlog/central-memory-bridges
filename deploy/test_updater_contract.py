@@ -44,6 +44,28 @@ class TestAutomaticUpgradeContract(unittest.TestCase):
         self.assertLess(UPDATE.index(gate), UPDATE.index('stamp=$(date'))
         self.assertLess(UPDATE.index(gate), UPDATE.index('log "Stopping $SERVICE for consistent backup and official update"'))
 
+    def test_explicit_target_version_prevents_automatic_latest_switch(self):
+        self.assertIn('CLAUDE_MEM_TARGET_VERSION', UPDATE)
+        self.assertIn('LATEST="$CLAUDE_MEM_TARGET_VERSION"', UPDATE)
+
+    def test_no_unattended_service_restart_outside_manual_flow(self):
+        # The systemd timer is disabled in production; the script stays safe
+        # to invoke from the explicit user-driven dispatcher only.
+        self.assertIn('CLAUDE_MEM_TARGET_VERSION', UPDATE)
+
+    def test_only_explicit_scoop_action_can_approve_or_upgrade(self):
+        root = Path(__file__).parent.parent
+        workflow = (root / '.github/workflows/claude-mem-auto-approve.yml').read_text(encoding='utf-8')
+        manual = (root / 'deploy/claude-mem-manual-upgrade.sh').read_text(encoding='utf-8')
+        self.assertNotIn('  schedule:', workflow)
+        self.assertIn("github.event_name == 'workflow_dispatch' && env.ALREADY_APPROVED == 'false'", workflow)
+        self.assertIn('MANUAL_CANDIDATE', workflow)
+        self.assertIn('gh workflow run "$WORKFLOW"', manual)
+        self.assertIn('gh run watch "$RUN_ID"', manual)
+        self.assertIn('CLAUDE_MEM_TARGET_VERSION="$TARGET" "$UPDATER"', manual)
+        self.assertIn('verify_health', manual)
+        self.assertNotIn('systemctl enable', manual)
+
     def test_existing_update_lifecycle_and_backup_retention_remain(self):
         self.assertIn('health_version "$LATEST"', UPDATE)
         self.assertIn('restore_dependent_service', UPDATE)
