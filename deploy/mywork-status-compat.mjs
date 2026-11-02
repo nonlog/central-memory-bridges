@@ -30,20 +30,36 @@ export function patchMyWorkStatus(source) {
   source=source.replace('idle:`Idle`','idle:`Inactive`').replace('working:`Working`,"needs-check"','working:`Active`,"needs-check"')
     .replace('children:`Running`','children:`Last activity`').replace('` working`','` confirmed active`');
   // Real release mapper. All native review/shipped decisions remain untouched.
-  const start='return tD({id:e.id,contentFingerprint:e.contentFingerprint,';
-  const end='checkedAt:e.review?.checked&&e.review.checkedAtEpoch?oN(e.review.checkedAtEpoch):void 0})}';
-  if(source.includes('function _N(')) {
-    if(source.split(start).length!==2||source.split(end).length!==2)throw Error('My Work request mapper contract changed');
-    source=source.replace(start,'return applyRequestActivity(e,tD({id:e.id,contentFingerprint:e.contentFingerprint,').replace(end,end.slice(0,-2)+'))}');
+  const mapperMatches=[...source.matchAll(/return ([A-Za-z_$][\w$]*)\(\{id:e\.id,contentFingerprint:e\.contentFingerprint,/g)];
+  const endMatches=[...source.matchAll(/checkedAt:e\.review\?\.checked&&e\.review\.checkedAtEpoch\?([A-Za-z_$][\w$]*)\(e\.review\.checkedAtEpoch\):void 0\}\)\}/g)];
+  if(mapperMatches.length!==endMatches.length||mapperMatches.length>1)throw Error('My Work request mapper contract changed');
+  if(mapperMatches.length===1) {
+    const mapper=mapperMatches[0][1],start=mapperMatches[0][0],end=endMatches[0][0];
+    source=source.replace(start,'return applyRequestActivity(e,'+mapper+'({id:e.id,contentFingerprint:e.contentFingerprint,').replace(end,end.slice(0,-2)+'))}');
     // A badge's native state still drives filtering and colors; the extra label
     // communicates session activity without inventing task completion.
-    if(!source.includes('function HD({state:e})'))throw Error('My Work badge contract changed');
-    source=source.replace('function HD({state:e})','function HD({state:e,label:bridgeLabel})');
-    const badgeStart=source.indexOf('function HD('),badgeEnd=source.indexOf('function ',badgeStart+12);
+    const badgeMatches=[...source.matchAll(/function ([A-Za-z_$][\w$]*)\(\{state:e\}\)\{return\(0,[A-Za-z_$][\w$]*\.jsx\)\(/g)];
+    const labelMatches=[...source.matchAll(/var ([A-Za-z_$][\w$]*)=\{working:`(?:Working|Active)`,/g)];
+    const richBadges=badgeMatches.filter(b=>{
+      const next=source.indexOf('function ',b.index+12);
+      const body=source.slice(b.index,next<0?undefined:next);
+      return body.length>200&&labelMatches.some(l=>body.includes(l[1]+'[e]'));
+    });
+    if(richBadges.length!==1)throw Error('My Work badge contract changed');
+    const selected=richBadges[0],badgeName=selected[1];
+    const originalBody=source.slice(selected.index,source.indexOf('function ',selected.index+12));
+    const matchingLabels=labelMatches.filter(l=>originalBody.includes(l[1]+'[e]'));
+    if(matchingLabels.length!==1)throw Error('My Work badge label contract changed');
+    const labelVar=matchingLabels[0][1];
+    source=source.replace(selected[0],selected[0].replace('{state:e}','{state:e,label:bridgeLabel}'));
+    const badgeStart=source.indexOf('function '+badgeName+'('),badgeEnd=source.indexOf('function ',badgeStart+12);
+    if(badgeEnd<0)throw Error('My Work badge boundary changed');
     let badge=source.slice(badgeStart,badgeEnd);
-    if(!badge.includes('BD[e]'))throw Error('My Work badge label changed');
-    badge=badge.replace('BD[e]','bridgeLabel||BD[e]');source=source.slice(0,badgeStart)+badge+source.slice(badgeEnd);
-    source=source.replaceAll('HD,{state:e.state}','HD,{state:e.state,label:e.bridgeStatus}');
+    if(!badge.includes(labelVar+'[e]'))throw Error('My Work badge label changed');
+    badge=badge.replace(labelVar+'[e]','bridgeLabel||'+labelVar+'[e]');source=source.slice(0,badgeStart)+badge+source.slice(badgeEnd);
+    const badgeCall=badgeName+',{state:e.state}';
+    if(!source.includes(badgeCall))throw Error('My Work badge invocation changed');
+    source=source.replaceAll(badgeCall,badgeName+',{state:e.state,label:e.bridgeStatus}');
     source=source.replace('(0,H.jsx)(dk,{word:o,settled:s||c})','e.state===`working`&&(0,H.jsx)(dk,{word:o,settled:s||c})');
     source+='\n'+applyRequestActivity.toString()+'\n';
   }

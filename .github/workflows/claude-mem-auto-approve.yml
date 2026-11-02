@@ -1,0 +1,124 @@
+name: Claude-mem official release CI approval
+
+on:
+  schedule:
+    - cron: '17 */4 * * *'
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'deploy/**'
+      - 'chatgpt-mcp/**'
+      - 'memory-admin-mcp/**'
+      - 'openclaw-memory-admin/**'
+      - 'hermes-provider/**'
+      - 'pi-extension/**'
+      - 'droid-marketplace/**'
+      - 'recall-bridge/**'
+      - 'shared/**'
+      - '.github/workflows/claude-mem-auto-approve.yml'
+  pull_request:
+    paths:
+      - 'deploy/**'
+      - 'chatgpt-mcp/**'
+      - 'memory-admin-mcp/**'
+      - 'openclaw-memory-admin/**'
+      - 'hermes-provider/**'
+      - 'pi-extension/**'
+      - 'droid-marketplace/**'
+      - 'recall-bridge/**'
+      - 'shared/**'
+      - '.github/workflows/claude-mem-auto-approve.yml'
+
+permissions:
+  contents: write
+concurrency:
+  group: claude-mem-release-approve-master
+  cancel-in-progress: false
+
+jobs:
+  candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Resolve latest exact official npm release and approval state
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(npm view claude-mem version --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(String(JSON.parse(s))))')
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          INTEGRITY=$(npm view "claude-mem@$VERSION" dist.integrity --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(String(JSON.parse(s))))')
+          [[ "$INTEGRITY" =~ ^sha512- ]]
+          echo "CLAUDE_MEM_CANDIDATE_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "CLAUDE_MEM_CANDIDATE_INTEGRITY=$INTEGRITY" >> "$GITHUB_ENV"
+          echo "CANDIDATE_ROOT=$RUNNER_TEMP/claude-mem-official" >> "$GITHUB_ENV"
+          if [[ "$GITHUB_EVENT_NAME" != pull_request ]] && node deploy/check-worker-upgrade.mjs --installed '15.1.0' --candidate "$VERSION" --integrity "$INTEGRITY" --approvals deploy/worker-upgrade-approvals.json; then
+            echo 'ALREADY_APPROVED=true' >> "$GITHUB_ENV"
+            echo 'Existing release approval matches the current source contract.'
+          else
+            echo 'ALREADY_APPROVED=false' >> "$GITHUB_ENV"
+          fi
+      - name: Download and verify the exact official npm artifact
+        if: env.ALREADY_APPROVED == 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$CANDIDATE_ROOT"
+          PACK=$(npm pack "claude-mem@$CLAUDE_MEM_CANDIDATE_VERSION" --silent --pack-destination "$RUNNER_TEMP")
+          node - "$RUNNER_TEMP/$PACK" "$CLAUDE_MEM_CANDIDATE_INTEGRITY" <<'NODE'
+          const fs=require('fs'); const {createHash}=require('crypto');
+          const actual='sha512-'+createHash('sha512').update(fs.readFileSync(process.argv[2])).digest('base64');
+          if(actual!==process.argv[3])throw Error('npm tarball integrity does not match published dist.integrity');
+          NODE
+          tar -xzf "$RUNNER_TEMP/$PACK" -C "$CANDIDATE_ROOT" --strip-components=1
+          node deploy/verify-worker-package.mjs "$CANDIDATE_ROOT"
+      - name: Execute actual bridge schema, hooks, admin and updater tests
+        if: env.ALREADY_APPROVED == 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --prefix chatgpt-mcp --ignore-scripts --no-audit --no-fund
+          npm install --prefix memory-admin-mcp --ignore-scripts --no-audit --no-fund
+          node --test shared/worker-search-compat.test.mjs chatgpt-mcp/full-memory-tools.test.mjs chatgpt-mcp/agent-identity.test.mjs chatgpt-mcp/client-platform.test.mjs
+          node --test shared/confirmed-delete.test.mjs memory-admin-mcp/server.test.mjs
+          node --test droid-marketplace/claude-mem/hooks/transcript.test.mjs
+          node --test tests/mywork-status.test.mjs tests/work-view-branding.test.mjs
+          node pi-extension/contract.test.mjs
+          python3 -m unittest discover -s tests -p 'test_*.py' -v
+          python3 -m unittest discover -s deploy -p 'test_*.py' -v
+          python3 -m unittest discover -s hermes-provider -p 'test_*.py' -v
+          node --test deploy/check-worker-upgrade.test.mjs
+          bash -n deploy/claude-mem-weekly-update.sh
+      - name: Test production patches against this exact official Worker and My Work bundle
+        if: env.ALREADY_APPROVED == 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 deploy/verify-staged-worker-overlay.py "$CANDIDATE_ROOT"
+          CLAUDE_MEM_BRANDING_NO_ICON_DOWNLOAD=1 node deploy/apply-claude-mem-viewer-branding.mjs --root "$CANDIDATE_ROOT"
+          CLAUDE_MEM_BRANDING_NO_ICON_DOWNLOAD=1 node deploy/apply-claude-mem-viewer-branding.mjs --root "$CANDIDATE_ROOT" --check
+          node --check "$CANDIDATE_ROOT/plugin/scripts/worker-service.cjs"
+          node --check "$CANDIDATE_ROOT/plugin/ui/viewer-bundle.js"
+          js=$(find "$CANDIDATE_ROOT/plugin/ui/work-view/assets" -maxdepth 1 -name 'index-cmb-*.js' -print -quit)
+          test -n "$js"
+          node --check "$js"
+      - name: Publish successful exact-version/source approval
+        if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request' && env.ALREADY_APPROVED == 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node deploy/write-worker-approval.mjs
+          if ! git diff --quiet -- deploy/worker-upgrade-approvals.json; then
+            git config user.name 'Codex'
+            git config user.email 'codex@openai.com'
+            git add deploy/worker-upgrade-approvals.json
+            git commit -m "ci: approve claude-mem $CLAUDE_MEM_CANDIDATE_VERSION after contract tests"
+            git push origin HEAD:master
+          fi

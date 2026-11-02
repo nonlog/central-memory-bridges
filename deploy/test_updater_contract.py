@@ -36,9 +36,11 @@ class TestAutomaticUpgradeContract(unittest.TestCase):
         self.assertIn('upstream now bundles a Hermes integration', UPDATE)
 
     def test_upstream_upgrade_is_blocked_before_worker_changes(self):
-        gate = 'node "$COMPATIBILITY_GATE" --installed "$CURRENT" --candidate "$LATEST"'
+        gate = 'node "$COMPATIBILITY_GATE" --installed "$CURRENT" --candidate "$LATEST" --integrity "$INTEGRITY" --approvals "$APPROVAL_FILE"'
         self.assertIn(gate, UPDATE)
-        self.assertIn('COMPATIBILITY HOLD: $LATEST not approved', UPDATE)
+        self.assertIn('git -C "$BRIDGE_REPO" fetch --quiet --no-tags origin master', UPDATE)
+        self.assertIn('refs/remotes/origin/master:deploy/worker-upgrade-approvals.json', UPDATE)
+        self.assertIn('COMPATIBILITY HOLD: $LATEST has not passed matching source/package CI checks', UPDATE)
         self.assertLess(UPDATE.index(gate), UPDATE.index('stamp=$(date'))
         self.assertLess(UPDATE.index(gate), UPDATE.index('log "Stopping $SERVICE for consistent backup and official update"'))
 

@@ -42,15 +42,22 @@ export function patchReactBundle(source) {
   const registry = REGISTRY_START + allowed + '=[`claude`,`codex`,`gemini`,' + ext +
     '],' + labels + '={claude:`Claude Code`,codex:`Codex`,gemini:`Gemini`,' + extLabels + '}' + REGISTRY_END;
   let patched = source.replace(original,registry);
-  const avatarStart = 'function ID({tool:e,mono:t=!1,className:n})';
-  const start=patched.indexOf(avatarStart);
-  if (start < 0 || patched.indexOf(avatarStart,start+1)>=0) throw new Error('React My Work avatar function changed');
+  // Minification renames the component (ID -> PF) and React JSX helper
+  // (H -> W) between official releases. Validate the function's signature and
+  // native SVG renderer rather than assuming those private variable names.
+  const avatarPattern = /function [A-Za-z_$][\w$]*\(\{tool:e,mono:t=!1,className:n\}\)\{/g;
+  const avatars = [...patched.matchAll(avatarPattern)];
+  if (avatars.length !== 1) throw new Error('React My Work avatar function changed');
+  const start=avatars[0].index;
   const ret = ';return e===`claude`?';
   const pos = patched.indexOf(ret,start);
-  if (pos < 0 || pos > start+230) throw new Error('React My Work native avatar contract changed');
+  if (pos < 0 || pos > start+330) throw new Error('React My Work native avatar contract changed');
+  const renderer = /^;return e===`claude`\?\(0,([A-Za-z_$][\w$]*)\.jsx\)\(`svg`,/.exec(patched.slice(pos, pos+110));
+  if(!renderer) throw new Error('React My Work SVG renderer changed');
+  const jsx = renderer[1];
   const icons = Object.entries(ICONS).map(([key,value])=>JSON.stringify(key)+':'+JSON.stringify(value)).join(',');
   const injected = ';' + AVATAR_START + 'let bridgeIcon={' + icons + '}[e];' +
-    'if(bridgeIcon)return(0,H.jsx)(`img`,{src:`/work-view/assets/agents/bridge-${bridgeIcon}.svg`,alt:``,"aria-hidden":`true`,className:r});' +
+    'if(bridgeIcon)return(0,' + jsx + '.jsx)(`img`,{src:`/work-view/assets/agents/bridge-${bridgeIcon}.svg`,alt:``,"aria-hidden":`true`,className:r});' +
     'if(e===`claude-web`)e=`claude`;if(e===`gemini-web`)e=`gemini`;' +
     AVATAR_END + 'return e===`claude`?';
   patched = patched.slice(0,pos)+injected+patched.slice(pos+ret.length);

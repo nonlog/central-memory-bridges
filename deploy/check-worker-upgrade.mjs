@@ -1,39 +1,34 @@
 #!/usr/bin/env node
-/**
- * Pre-flight gate: fail closed BEFORE stopping Worker or creating backups.
- * An unapproved upstream release must never be installed by unattended runs.
- * This does not edit any credentials or start/stop any service.
+/** Fail closed before touching the Worker. New releases require a successful
+ * GitHub Actions compatibility run, an immutable npm dist.integrity value,
+ * and the exact same bridge/update source code used by that run.
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const installed = process.argv[process.argv.indexOf('--installed') + 1];
-const candidate = process.argv[process.argv.indexOf('--candidate') + 1];
-const root = path.dirname(fileURLToPath(import.meta.url));
-const policyFile = path.join(root, 'worker-upgrade-policy.json');
-const versionRegex = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[A-Za-z0-9.-]+)?$/;
-
-try {
-  if (!versionRegex.test(String(installed)) || !versionRegex.test(String(candidate))) {
-    throw new Error('Invalid Worker version or missing --installed/--candidate');
+import {execFileSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
+const root=path.dirname(fileURLToPath(import.meta.url));
+const arg=k=>process.argv.includes(k)?process.argv[process.argv.indexOf(k)+1]:undefined;
+const installed=arg('--installed'),candidate=arg('--candidate');
+const integrity=arg('--integrity');
+const approvalsFile=arg('--approvals');
+const semver=/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[A-Za-z0-9.-]+)?$/;
+try{
+  if(!semver.test(String(installed))||!semver.test(String(candidate)))throw Error('Invalid version arguments');
+  if(installed===candidate){console.log('Worker release unchanged');process.exit(0);}
+  const policy=JSON.parse(fs.readFileSync(path.join(root,'worker-upgrade-policy.json'),'utf8'));
+  if(policy.schemaVersion!==1||!Array.isArray(policy.approvedVersions)||policy.approvedVersions.some(v=>!semver.test(v)))throw Error('Invalid local fallback policy');
+  if(policy.approvedVersions.includes(candidate)){
+    console.log('Approved previously-reviewed Worker release: '+candidate);process.exit(0);
   }
-  if (installed === candidate) {
-    console.log('Worker release unchanged; no compatibility migration required');
-    process.exit(0);
-  }
-  const policy = JSON.parse(fs.readFileSync(policyFile, 'utf8'));
-  if (policy.schemaVersion !== 1 || !Array.isArray(policy.approvedVersions) ||
-      policy.approvedVersions.some(v => !versionRegex.test(String(v)))) {
-    throw new Error('Unrecognized or invalid compatibility approval manifest');
-  }
-  if (!policy.approvedVersions.includes(candidate)) {
-    console.error('COMPATIBILITY HOLD: claude-mem ' + candidate +
-      ' has not passed the current bridge upgrade review; Worker remains on ' + installed);
-    process.exit(78);
-  }
-  console.log('Approved Worker upgrade ' + installed + ' -> ' + candidate);
-} catch (error) {
-  console.error('COMPATIBILITY HOLD: ' + error.message);
-  process.exit(78);
-}
+  if(!approvalsFile||!integrity||!/^sha512-[A-Za-z0-9+/]+={0,2}$/.test(integrity))throw Error('Missing CI approval or npm integrity');
+  const approvals=JSON.parse(fs.readFileSync(approvalsFile,'utf8'));
+  if(approvals.schemaVersion!==1||approvals.repository!=='nonlog/central-memory-bridges'||!Array.isArray(approvals.releases))throw Error('Invalid approval provenance');
+  const matches=approvals.releases.filter(r=>r.version===candidate);
+  if(matches.length!==1)throw Error('No successful CI compatibility approval for '+candidate);
+  const entry=matches[0];
+  if(entry.integrity!==integrity||entry.workflow!=='claude-mem-auto-approve.yml'||!Number.isSafeInteger(entry.runId)||entry.runId<=0||!/^([a-f0-9]{64})$/.test(entry.contractDigest||''))throw Error('Approval provenance or npm package integrity mismatch');
+  const digest=execFileSync(process.execPath,[path.join(root,'upgrade-contract-digest.mjs')],{encoding:'utf8'}).trim();
+  if(digest!==entry.contractDigest)throw Error('Deployed bridge/update code differs from CI-tested code');
+  console.log(`CI-approved Worker upgrade ${installed} -> ${candidate} (run ${entry.runId})`);
+}catch(e){console.error('COMPATIBILITY HOLD: '+e.message);process.exit(78);}

@@ -119,13 +119,27 @@ LATEST=$(npm view claude-mem version --json | node -e 'let s="";process.stdin.on
 [[ -n "$LATEST" ]]
 log "Installed=$CURRENT npm-latest=$LATEST"
 
-# Fail closed before making a backup or stopping Worker. An npm release may
-# delete an API on which a remote bridge depends. Promotion to the allowlist
-# requires CI plus deployed-client compatibility checks for that exact version.
-COMPATIBILITY_GATE=/root/apps/central-memory-bridges/deploy/check-worker-upgrade.mjs
-if ! node "$COMPATIBILITY_GATE" --installed "$CURRENT" --candidate "$LATEST"; then
-  log "COMPATIBILITY HOLD: $LATEST not approved for unattended upgrade. Keeping $CURRENT running."
-  exit 0
+# Fail closed before backup/service changes. Pull only the CI-generated
+# approval manifest from the trusted public GitHub master branch. Never pull or
+# execute arbitrary new deployment code in this updater: it must already match
+# the exact source digest approved in CI.
+BRIDGE_REPO=/root/apps/central-memory-bridges
+COMPATIBILITY_GATE="$BRIDGE_REPO/deploy/check-worker-upgrade.mjs"
+APPROVAL_FILE="$CACHE/worker-upgrade-approvals.json"
+if [[ "$CURRENT" != "$LATEST" ]]; then
+  if ! git -C "$BRIDGE_REPO" fetch --quiet --no-tags origin master; then
+    log "COMPATIBILITY HOLD: Could not refresh GitHub Actions approvals; keeping $CURRENT."
+    exit 0
+  fi
+  if ! git -C "$BRIDGE_REPO" show refs/remotes/origin/master:deploy/worker-upgrade-approvals.json > "$APPROVAL_FILE"; then
+    log "COMPATIBILITY HOLD: No published CI approvals; keeping $CURRENT."
+    exit 0
+  fi
+  INTEGRITY=$(npm view "claude-mem@$LATEST" dist.integrity --json | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(String(JSON.parse(s))))')
+  if ! node "$COMPATIBILITY_GATE" --installed "$CURRENT" --candidate "$LATEST" --integrity "$INTEGRITY" --approvals "$APPROVAL_FILE"; then
+    log "COMPATIBILITY HOLD: $LATEST has not passed matching source/package CI checks; keeping $CURRENT."
+    exit 0
+  fi
 fi
 
 if [[ "$CURRENT" == "$LATEST" ]]; then
@@ -288,12 +302,14 @@ with open(oldp, encoding="utf-8") as f: old=json.load(f)
 prefixes=(
     "CLAUDE_MEM_OPENROUTER_", "CLAUDE_MEM_GEMINI_", "CLAUDE_MEM_CLAUDE_",
     "CLAUDE_MEM_CLOUD_SYNC_", "CLAUDE_MEM_PRO_",
+    "CLAUDE_MEM_OPENAI_COMPAT_", "CLAUDE_MEM_TIER_",
 )
 # The official remote hook clients share this bearer secret with the Worker.
 # The upstream installer can rewrite settings.json; dropping this field would
 # silently turn every post-upgrade /api/spool/ingest request into HTTP 503.
 exact={
     "CLAUDE_MEM_PROVIDER", "CLAUDE_MEM_MODEL", "CLAUDE_MEM_QUOTA_FALLBACK_PROVIDER",
+    "CLAUDE_MEM_QUOTA_FALLBACK_MODEL", "CLAUDE_MEM_HOOK_FAIL_LOUD_THRESHOLD",
     "CLAUDE_MEM_WORKER_INGEST_TOKEN", "CLAUDE_MEM_HOOK_SPOOL_TRANSPORT",
     "CLAUDE_MEM_WORK_VIEW_AUTO_REFRESH",
 }

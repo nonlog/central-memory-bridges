@@ -27,3 +27,27 @@ test('unexpected semver or absent candidate fails closed', () => {
   assert.equal(call('14.0.1','').status, 78);
   assert.equal(call('14.0.1','v15.0.1').status, 78);
 });
+
+// CI approval cannot be forged by a version number alone: exact npm artifact,
+// run provenance and currently deployed source must all agree.
+import fs from 'node:fs';
+import os from 'node:os';
+import {execFileSync} from 'node:child_process';
+test('CI-approved candidate requires identical package integrity and deployed sources', t=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'claude-mem-gate-'));
+  t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+  const manifest=path.join(dir,'approved.json');
+  const digest=execFileSync(process.execPath,[path.join(root,'upgrade-contract-digest.mjs')],{encoding:'utf8'}).trim();
+  const integrity='sha512-'+Buffer.alloc(64,42).toString('base64');
+  const entry={version:'15.8.3',integrity,contractDigest:digest,workflow:'claude-mem-auto-approve.yml',runId:1234};
+  const doc={schemaVersion:1,repository:'nonlog/central-memory-bridges',releases:[entry]};
+  const run=(other,env=[])=>{
+    fs.writeFileSync(manifest,JSON.stringify(other));
+    return spawnSync(process.execPath,[script,'--installed','15.1.0','--candidate','15.8.3','--integrity',integrity,'--approvals',manifest,...env],{encoding:'utf8'});
+  };
+  assert.equal(run(doc).status,0);
+  assert.equal(run({...doc,releases:[{...entry,integrity:'sha512-WRONG'}]}).status,78);
+  assert.equal(run({...doc,releases:[{...entry,contractDigest:'f'.repeat(64)}]}).status,78);
+  assert.equal(run({...doc,releases:[{...entry,workflow:'untrusted.yml'}]}).status,78);
+  assert.equal(run({...doc,releases:[]}).status,78);
+});
