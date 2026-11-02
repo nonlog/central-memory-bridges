@@ -1,5 +1,13 @@
 {
   "schemaVersion": 1,
   "repository": "nonlog/central-memory-bridges",
-  "releases": []
+  "releases": [
+    {
+      "version": "15.8.3",
+      "integrity": "sha512-OGVF91aesQ2IFwPdgtkb3BWYQb1dwjGOXKBlV0qZZZtU78EQCiwFcfVvKanMKXJhl05a3c9l/xza6UNisKEA/A==",
+      "contractDigest": "9bf5b9a8dfc08c75faab3f36c3f0e43ca70c78ebab8668f3d2e4cabd3e677a36",
+      "workflow": "claude-mem-auto-approve.yml",
+      "runId": 41458647480
+    }
+  ]
 }
