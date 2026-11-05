@@ -19,6 +19,7 @@ async function readStdin() {
 }
 
 async function main() {
+  if (['1', 'true'].includes(String(process.env.HINDSIGHT_DISABLE_HOOKS || '').trim().toLowerCase())) return;
   const harness = process.argv[2] === 'claude-code' ? 'claude-code' : 'codex';
   const payload = await readStdin();
   const prompt = String(payload.prompt || payload.user_prompt || '');

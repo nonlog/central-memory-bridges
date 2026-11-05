@@ -205,4 +205,11 @@ test('disabled or invalid prompts make no requests', async () => {
   });
   assert.equal(calls,0);
   assert.equal(r.context,'');
+
+  const r2=await unifiedRecall({prompt:'What?',cwd:'/tmp'},{
+    config:CONF,env:{HINDSIGHT_DISABLE_HOOKS:'1',HINDSIGHT_API_TOKEN:'test-token'},fetcher:async()=>{calls++;},
+  });
+  assert.equal(calls,0);
+  assert.equal(r2.context,'');
+  assert.equal(r2.diagnostic.mode,'off');
 });

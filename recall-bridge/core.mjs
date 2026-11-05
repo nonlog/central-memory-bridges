@@ -253,7 +253,8 @@ export async function unifiedRecall({ prompt, cwd, harness = 'unknown' }, {
   projectResolver = projectFor, clock = () => Date.now(),
 } = {}) {
   const started = clock();
-  const effectiveMode = modeFor(config, harness);
+  const disabledByEnv = ['1', 'true'].includes(String(env?.HINDSIGHT_DISABLE_HOOKS || '').trim().toLowerCase());
+  const effectiveMode = disabledByEnv ? 'off' : modeFor(config, harness);
   const diagnostic = { harness, mode: effectiveMode, banks: [], perSource: {}, failures: [], elapsedMs: 0, candidates: 0, selected: 0 };
   if (effectiveMode === 'off' || typeof prompt !== 'string' || !prompt.trim() || prompt.length > 30000) {
     return { context: '', items: [], diagnostic };
