@@ -31,11 +31,12 @@ export function patchMyWorkStatus(source) {
     .replace('children:`Running`','children:`Last activity`').replace('` working`','` confirmed active`');
   // Real release mapper. All native review/shipped decisions remain untouched.
   const mapperMatches=[...source.matchAll(/return ([A-Za-z_$][\w$]*)\(\{id:e\.id,contentFingerprint:e\.contentFingerprint,/g)];
-  const endMatches=[...source.matchAll(/checkedAt:e\.review\?\.checked&&e\.review\.checkedAtEpoch\?([A-Za-z_$][\w$]*)\(e\.review\.checkedAtEpoch\):void 0\}\)\}/g)];
+  const endMatches=[...source.matchAll(/checkedAt:e\.review\?\.checked&&e\.review\.checkedAtEpoch\?([A-Za-z_$][\w$]*)\(e\.review\.checkedAtEpoch\):void 0/g)];
   if(mapperMatches.length!==endMatches.length||mapperMatches.length>1)throw Error('My Work request mapper contract changed');
   if(mapperMatches.length===1) {
-    const mapper=mapperMatches[0][1],start=mapperMatches[0][0],end=endMatches[0][0];
-    source=source.replace(start,'return applyRequestActivity(e,'+mapper+'({id:e.id,contentFingerprint:e.contentFingerprint,').replace(end,end.slice(0,-2)+'))}');
+    const mapper=mapperMatches[0][1],start=mapperMatches[0][0];
+    // Wrap the callee so new upstream object fields keep their original boundary.
+    source=source.replace(start,'return (request=>applyRequestActivity(e,'+mapper+'(request)))({id:e.id,contentFingerprint:e.contentFingerprint,');
     // A badge's native state still drives filtering and colors; the extra label
     // communicates session activity without inventing task completion.
     const badgeMatches=[...source.matchAll(/function ([A-Za-z_$][\w$]*)\(\{state:e\}\)\{return\(0,[A-Za-z_$][\w$]*\.jsx\)\(/g)];
