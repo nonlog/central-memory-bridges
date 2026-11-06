@@ -52,3 +52,4 @@ $script:versions=[Collections.Generic.Queue[string]]::new([string[]]@('15.10.0',
 $rejected=$false;try { Invoke-Expression $loop[0].Extent.Text } catch { $rejected=$true }
 Assert-Equal $rejected $true
 Write-Host 'PASS: delayed clients, concurrent targets, invalid versions and degraded central health'
+exit 0
