@@ -51,5 +51,26 @@ Assert-Equal $target '15.11.0'
 $script:versions=[Collections.Generic.Queue[string]]::new([string[]]@('15.10.0','15.11.0','15.11.0','15.12.0','15.12.0','15.13.0'))
 $rejected=$false;try { Invoke-Expression $loop[0].Extent.Text } catch { $rejected=$true }
 Assert-Equal $rejected $true
+$sandbox=Join-Path ([IO.Path]::GetTempPath()) ('central-client-install-'+[guid]::NewGuid().ToString('N'))
+$oldConfig=$env:CLAUDE_CONFIG_DIR
+try {
+  foreach ($clientName in @('IOTFRESH','Log','ThirdComputer')) {
+    $env:CLAUDE_CONFIG_DIR=Join-Path $sandbox $clientName
+    & $pwsh -NoProfile -File (Join-Path $PSScriptRoot '../deploy/windows/install-central-client.ps1') -InstallOnly | Out-Null
+    Assert-Equal $LASTEXITCODE 0
+    $guard=Join-Path $env:CLAUDE_CONFIG_DIR 'maintenance/claude-mem-remote-worker-guard.cjs'
+    Assert-Equal (Test-Path -LiteralPath $guard) $true
+  }
+  & $pwsh -NoProfile -File (Join-Path $PSScriptRoot '../deploy/windows/install-central-client.ps1') -InstallOnly | Out-Null
+  Assert-Equal $LASTEXITCODE 0
+  Assert-Equal (@(Get-ChildItem (Join-Path $env:CLAUDE_CONFIG_DIR 'maintenance/backups') -Recurse -Filter 'sync-claude-mem-central.ps1').Count) 1
+} finally {
+  $env:CLAUDE_CONFIG_DIR=$oldConfig
+  if (Test-Path -LiteralPath $sandbox) {
+    $resolved=[IO.Path]::GetFullPath($sandbox)
+    if (-not $resolved.StartsWith([IO.Path]::GetFullPath([IO.Path]::GetTempPath()),[StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe test cleanup path' }
+    Remove-Item -LiteralPath $resolved -Recurse -Force
+  }
+}
 Write-Host 'PASS: delayed clients, concurrent targets, invalid versions and degraded central health'
 exit 0
