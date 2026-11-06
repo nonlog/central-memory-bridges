@@ -12,20 +12,20 @@ TARGET=${1:-}
 [[ "$TARGET" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Expected an exact stable version, e.g. 15.8.3' >&2; exit 64; }
 [[ -f "$WORKER" && -x "$UPDATER" ]] || { echo 'Central Worker updater is missing' >&2; exit 1; }
 exec 8>/run/claude-mem-manual-upgrade.lock
-flock -w 15 8 || { echo 'Another manual upgrade is running' >&2; exit 1; }
-CURRENT=$(node -e 'process.stdout.write(require(process.argv[1]).version)' "$WORKER")
-if dpkg --compare-versions "$TARGET" lt "$CURRENT"; then
-  echo "Refusing to downgrade central Worker $CURRENT to $TARGET" >&2
-  exit 1
+if ! flock -n 8; then
+  echo 'Another computer is upgrading the central Worker; waiting for its result.'
+  flock -w 3600 8 || { echo 'Timed out waiting for the central upgrade; retry later.' >&2; exit 75; }
 fi
+CURRENT=$(node -e 'process.stdout.write(require(process.argv[1]).version)' "$WORKER")
 verify_health() {
+  local expected="${1:-$TARGET}"
   curl -fsS --max-time 8 http://127.0.0.1:37777/api/health | \
-    node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s),target=process.argv[1];if(a.version!==target||a.status!=="ok"||a.mcpReady!==true||a.dependencies?.degraded)process.exit(1);console.log(`Central Worker ${a.version}: healthy, MCP ready`)})' "$TARGET"
+    node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s),target=process.argv[1];if(a.version!==target||a.status!=="ok"||a.mcpReady!==true||a.dependencies?.degraded)process.exit(1);console.log(`Central Worker ${a.version}: healthy, MCP ready`)})' "$expected"
   curl -fsS --max-time 8 http://127.0.0.1:37777/api/readiness >/dev/null
 }
-if [[ "$CURRENT" == "$TARGET" ]]; then
-  echo "Central Worker already on $TARGET; no server modification required."
-  verify_health
+if dpkg --compare-versions "$CURRENT" ge "$TARGET"; then
+  echo "Central Worker is already $CURRENT (requested $TARGET); synchronize this computer to $CURRENT."
+  verify_health "$CURRENT"
   exit 0
 fi
 command -v gh >/dev/null || { echo 'GitHub CLI unavailable on Ubuntu-us' >&2; exit 1; }

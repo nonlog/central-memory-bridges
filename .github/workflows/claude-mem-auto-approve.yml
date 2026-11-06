@@ -104,6 +104,8 @@ jobs:
           node --test shared/confirmed-delete.test.mjs memory-admin-mcp/server.test.mjs
           node --test droid-marketplace/claude-mem/hooks/transcript.test.mjs
           node --test tests/mywork-status.test.mjs tests/work-view-branding.test.mjs
+          node --test tests/remote-worker-guard.test.cjs
+          pwsh -NoProfile -File tests/central-client-sync.test.ps1
           node pi-extension/contract.test.mjs
           python3 -m unittest discover -s tests -p 'test_*.py' -v
           python3 -m unittest discover -s deploy -p 'test_*.py' -v

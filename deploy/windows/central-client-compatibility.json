@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "captureOnlyPairs": [
+    { "client": "15.9.0", "worker": "15.10.0", "spoolProtocol": 1 }
+  ]
+}

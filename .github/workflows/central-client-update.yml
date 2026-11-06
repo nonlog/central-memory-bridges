@@ -1,0 +1,54 @@
+name: Multi-computer client updates
+on:
+  pull_request:
+    paths: ['deploy/windows/**', 'deploy/claude-mem-manual-upgrade.sh', 'deploy/test_multi_client_dispatch.py', 'tests/*client*', 'tests/remote-worker*', '.github/workflows/central-client-update.yml']
+  push:
+    branches: [master]
+    paths: ['deploy/windows/**', 'deploy/claude-mem-manual-upgrade.sh', 'deploy/test_multi_client_dispatch.py', 'tests/*client*', 'tests/remote-worker*', '.github/workflows/central-client-update.yml']
+permissions:
+  contents: read
+jobs:
+  clients:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: node --test tests/remote-worker-guard.test.cjs
+      - shell: pwsh
+        run: ./tests/central-client-sync.test.ps1
+      - if: runner.os == 'Linux'
+        run: python3 -m unittest discover -s deploy -p test_multi_client_dispatch.py -v
+  official-spool:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@v2
+      - name: Verify the exact upstream capture protocol pair
+        run: |
+          git clone --quiet --depth=1 --branch v15.10.0 --filter=blob:none --no-checkout https://github.com/thedotmack/claude-mem.git "$RUNNER_TEMP/upstream"
+          git -C "$RUNNER_TEMP/upstream" fetch --quiet --depth=1 origin refs/tags/v15.9.0:refs/tags/v15.9.0
+          git -C "$RUNNER_TEMP/upstream" diff --exit-code v15.9.0 v15.10.0 -- src/shared/hook-spool.ts src/shared/hook-spool-remote.ts src/services/worker/http/routes/HookSpoolRoutes.ts
+      - name: Download official client runtimes
+        run: |
+          for version in 15.9.0 15.10.0; do
+            dir="$RUNNER_TEMP/client-$version"
+            mkdir -p "$dir"
+            archive=$(npm pack "claude-mem@$version" --ignore-scripts --silent --pack-destination "$dir")
+            tar -xzf "$dir/$archive" -C "$dir"
+            (cd "$dir/package/plugin" && bun install --production --ignore-scripts)
+          done
+      - name: Exercise durable capture, held upload and acknowledged retry with real bundles
+        run: node --test tests/official-client-spool.test.cjs
+        env:
+          CLIENT_PACKAGE_ROOT: ${{ runner.temp }}
