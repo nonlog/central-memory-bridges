@@ -39,12 +39,18 @@ export function patchMyWorkStatus(source) {
     source=source.replace(start,'return (request=>applyRequestActivity(e,'+mapper+'(request)))({id:e.id,contentFingerprint:e.contentFingerprint,');
     // A badge's native state still drives filtering and colors; the extra label
     // communicates session activity without inventing task completion.
-    const badgeMatches=[...source.matchAll(/function ([A-Za-z_$][\w$]*)\(\{state:e\}\)\{return\(0,[A-Za-z_$][\w$]*\.jsx\)\(/g)];
+    // Upstream 15.12.0 moved the rich badge's JSX return behind an i18n hook
+    // (function hI({state:e}){let{t}=G();return(0,B.jsx)(...)}), so match the
+    // signature and let the body filters (JSX return, length, label lookup)
+    // pick the rich badge over the compact one.
+    const badgeMatches=[...source.matchAll(/function ([A-Za-z_$][\w$]*)\(\{state:e\}\)\{/g)];
     const labelMatches=[...source.matchAll(/var ([A-Za-z_$][\w$]*)=\{working:`(?:Working|Active)`,/g)];
     const richBadges=badgeMatches.filter(b=>{
       const next=source.indexOf('function ',b.index+12);
       const body=source.slice(b.index,next<0?undefined:next);
-      return body.length>200&&labelMatches.some(l=>body.includes(l[1]+'[e]'));
+      return body.length>200
+        && /return\(0,[A-Za-z_$][\w$]*\.jsx\)\(/.test(body)
+        && labelMatches.some(l=>body.includes(l[1]+'[e]'));
     });
     if(richBadges.length!==1)throw Error('My Work badge contract changed');
     const selected=richBadges[0],badgeName=selected[1];

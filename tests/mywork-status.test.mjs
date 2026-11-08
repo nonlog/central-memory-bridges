@@ -22,3 +22,22 @@ test('release mappers preserve normalized data and new review/suggestion fields'
 });
 test('ambiguous release mappers fail closed',()=>assert.throws(()=>patchMyWorkStatus(mapperFixture('')+'function other(e){return normalize({id:e.id,contentFingerprint:e.contentFingerprint,state:`working`})}'),/request mapper contract changed/));
 test('changed release mapper entry fails closed',()=>assert.throws(()=>patchMyWorkStatus(mapperFixture('').replace('contentFingerprint:e.contentFingerprint,','contentFingerprint:changed,')),/request mapper contract changed/));
+
+// 15.12.0 shape: the rich badge's JSX return sits behind an i18n hook, a second
+// label map exists, and a compact badge shares the same label map.
+const v1512Fixture=fixture
+  +'var quietLabels={working:`Working`,quiet:`No recent step`,finished:`Finished`};var classes={working:`border-working`};'
+  +'function normalize(r){return{...r,normalized:true}}function date(r){return r}'
+  +'function mapRequest(e){return normalize({id:e.id,contentFingerprint:e.contentFingerprint,state:`working`,stage:`Building`,checkedAt:e.review?.checked&&e.review.checkedAtEpoch?date(e.review.checkedAtEpoch):void 0})}'
+  +'function Badge({state:e}){let{t}=G();return(0,J.jsx)(`span`,{className:`inline-flex items-center rounded-full border px-2 py-1 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2`,children:[(0,J.jsx)(`span`,{className:`size-1.5 rounded-full`}),t(labels[e])]})}'
+  +'function Compact({state:e}){return(0,J.jsx)(KH,{text:W(labels[e]),tileClassName:classes[e]})}'
+  +'function render(e){return(0,J.jsx)(Badge,{state:e.state})}function renderCompact(e){return(0,J.jsx)(Compact,{state:e.state})}';
+test('15.12.0 badge shape: hook-prefixed rich badge is patched, compact badge is not',()=>{
+  const patched=patchMyWorkStatus(v1512Fixture);
+  assert.match(patched,/function Badge\(\{state:e,label:bridgeLabel\}\)/);
+  assert.match(patched,/bridgeLabel\|\|labels\[e\]/);
+  assert.match(patched,/Badge,\{state:e\.state,label:e\.bridgeStatus\}/);
+  assert.doesNotMatch(patched,/function Compact\(\{state:e,label:/);
+  assert.doesNotMatch(patched,/Compact,\{state:e\.state,label:/);
+  assert.equal(patchMyWorkStatus(patched),patched);
+});
