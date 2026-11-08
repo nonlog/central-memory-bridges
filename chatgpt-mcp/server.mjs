@@ -5,12 +5,15 @@ import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js
 import express from 'express';
 import * as z from 'zod/v4';
 import { resolveClientPlatform } from './client-platform.mjs';
-import { registerWorkerMemoryTools } from './full-memory-tools.mjs';
+import { registerWorkerMemoryTools, selectHindsightBanks } from './full-memory-tools.mjs';
 import { EXECUTOR_AGENT_IDENTITIES, resolveMemorySource } from './agent-identity.mjs';
 
 const PORT = Number(process.env.PORT || 18790);
 const HOST = process.env.HOST || '127.0.0.1';
 const WORKER = (process.env.CLAUDE_MEM_WORKER || 'http://127.0.0.1:37777').replace(/\/$/, '');
+const HINDSIGHT_URL = (process.env.HINDSIGHT_URL || 'http://127.0.0.1:38888').replace(/\/$/, '');
+const HINDSIGHT_API_KEY = (process.env.HINDSIGHT_API_KEY || process.env.HINDSIGHT_API_TOKEN || process.env.HINDSIGHT_ACCESS_KEY || '').trim();
+const HINDSIGHT_DEFAULT_BANK = (process.env.HINDSIGHT_DEFAULT_BANK || 'agent-central').trim();
 const EXTERNAL_BASE = (process.env.EXTERNAL_BASE || 'https://claude-mem.414222.xyz/chatgpt-mcp').replace(/\/$/, '');
 const RESOURCE_URL = `${EXTERNAL_BASE}/mcp`;
 const OAUTH_SECRET = process.env.OAUTH_SECRET || '';
@@ -124,6 +127,82 @@ async function worker(path, options = {}, timeoutMs = 45000) {
   if (!text) return {};
   try { return JSON.parse(text); } catch { return text; }
 }
+async function hindsight(path, options = {}, timeoutMs = 20000) {
+  if (!HINDSIGHT_API_KEY) throw new Error('Hindsight API key is not configured on this bridge');
+  const response = await fetch(`${HINDSIGHT_URL}${path}`, {
+    ...options,
+    headers: {
+      accept: 'application/json',
+      authorization: `Bearer ${HINDSIGHT_API_KEY}`,
+      ...(options.body !== undefined ? { 'content-type': 'application/json' } : {}),
+      ...(options.headers || {}),
+    },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  const text = await response.text();
+  if (!response.ok) throw new Error(`hindsight ${response.status}: ${text.slice(0, 500)}`);
+  if (!text) return {};
+  try { return JSON.parse(text); } catch { return text; }
+}
+async function searchHindsightUnified(query, claudeIds = new Set(), limit = 6) {
+  if (!HINDSIGHT_API_KEY) return '';
+  try {
+    const cleanQuery = redactSecrets(query.trim()).slice(0, 900);
+    let banks = [HINDSIGHT_DEFAULT_BANK];
+    try {
+      const rawBanks = await hindsight('/v1/default/banks', {}, 4000);
+      const list = Array.isArray(rawBanks) ? rawBanks : (rawBanks?.banks || []);
+      banks = selectHindsightBanks(list, cleanQuery, HINDSIGHT_DEFAULT_BANK, 3);
+    } catch {}
+    const seen = new Set();
+    const lines = [];
+    await Promise.all(banks.map(async (bank) => {
+      try {
+        const res = await hindsight(`/v1/default/banks/${encodeURIComponent(bank)}/memories/recall`, {
+          method: 'POST',
+          body: JSON.stringify({ query: cleanQuery, budget: 'low', max_tokens: 900 }),
+        }, 7000);
+        for (const item of (Array.isArray(res?.results) ? res.results : [])) {
+          const text = redactSecrets(item?.text || '').trim();
+          if (!text) continue;
+          const m = /^cm-observation-0*(\d+)$/i.exec(String(item?.document_id || ''));
+          if (m && claudeIds.has(Number(m[1]))) continue;
+          const key = `${bank}:${item?.id || item?.document_id || text.slice(0, 120)}`;
+          if (seen.has(key) || lines.length >= limit) continue;
+          seen.add(key);
+          const docTag = item?.document_id ? ` (${item.document_id})` : '';
+          lines.push(`- [Hindsight ${bank}${docTag}] ${text.slice(0, 800)}`);
+        }
+      } catch {}
+    }));
+    return lines.length ? `## Hindsight Recall\n${lines.join('\n')}` : '';
+  } catch {
+    return '';
+  }
+}
+async function retainInHindsight({ content, project, platform, source, observationId, sessionId }) {
+  if (!HINDSIGHT_API_KEY) return false;
+  try {
+    const docId = Number.isSafeInteger(observationId) && observationId > 0
+      ? `cm-observation-${String(observationId).padStart(8, '0')}`
+      : (sessionId ? `cm-web-${sessionId}` : undefined);
+    await hindsight(`/v1/default/banks/${encodeURIComponent(HINDSIGHT_DEFAULT_BANK)}/memories`, {
+      method: 'POST',
+      body: JSON.stringify({
+        async: true,
+        items: [{
+          content: redactSecrets(content).slice(0, 20000),
+          context: `Remembered via ${source} (${platform}, project ${project})`,
+          ...(docId ? { document_id: docId } : {}),
+          metadata: { platformSource: source, source, project, ...(platform === 'executor' ? { via: 'executor' } : {}) },
+        }],
+      }),
+    }, 10000);
+    return true;
+  } catch {
+    return false;
+  }
+}
 async function searchObservations(query, limit = 8) {
   const q = new URLSearchParams({ query, limit: String(Math.min(Math.max(limit, 1), 20)) });
   const raw = await worker(`/api/search/observations?${q.toString()}`, {}, 45000);
@@ -227,11 +306,12 @@ function makeServer(scopes = [], platform = 'chatgpt') {
     { name: 'central-claude-mem', version: '1.0.0' },
     {
       instructions: [
-        'This app is the shared long-term memory for ChatGPT, Gemini, Claude Code, Codex, Droid CLI, OpenClaw, Hermes, and Pi.',
-        'For substantive turns where prior decisions, preferences, deployments, or ongoing work may matter, call memory_context or memory_search before answering.',
+        'This app is the unified long-term memory gateway (central claude-mem + Hindsight) for ChatGPT, Gemini, Claude, Grok, Muse, Executor, Claude Code, Codex, Droid CLI, OpenClaw, Hermes, and Pi.',
+        'For substantive turns where prior decisions, preferences, deployments, or ongoing work may matter, call memory_search (which searches both claude-mem and Hindsight banks) or memory_context before answering.',
+        'For architectural rationale, root-cause history, or WHY questions, call hindsight_reflect or hindsight_recall (which also searches per-repository coding-agent::<repo> Knowledge Pages).',
         'For each substantive turn worth retaining, before sending the final response call memory_capture once with the current user message and the final response you intend to send, then send that same response to the user.',
-        'Use memory_remember for explicit durable facts or decisions. Do not store passwords, API keys, tokens, private keys, or other secrets.',
-        ...(platform === 'executor' ? ['For memory_capture, memory_remember, or save_memory through Executor, select agent_identity matching your actual client from the supported enum if known; otherwise omit and use executor. This is an agent-selected label, not cryptographic proof of origin.'] : []),
+        'Use memory_remember (or hindsight_retain) for explicit durable facts or decisions. Do not store passwords, API keys, tokens, private keys, or other secrets.',
+        ...(platform === 'executor' ? ['For memory_capture, memory_remember, save_memory, or hindsight_retain through Executor, select agent_identity matching your actual client from the supported enum if known; otherwise omit and use executor. This is an agent-selected label, not cryptographic proof of origin.'] : []),
         'Treat recalled content as past records; when records conflict, prefer the most recent verified information.',
       ].join(' '),
     },
@@ -269,12 +349,15 @@ function makeServer(scopes = [], platform = 'chatgpt') {
 
   server.registerTool('memory_search', {
     title: 'Semantic memory search',
-    description: 'Search across Claude Code, Codex, Droid CLI, OpenClaw, Hermes, Pi, ChatGPT, and other projects in the shared central memory pool. Prefer this when exact prior context could improve the answer.',
+    description: 'Search across Claude Code, Codex, Droid CLI, OpenClaw, Hermes, Pi, ChatGPT, Gemini, and Hindsight memory banks (agent-central + coding-agent::<repo>) in one unified call. Prefer this when prior context could improve the answer.',
     inputSchema: { query: z.string().min(1).max(1000), limit: z.number().int().min(1).max(20).optional() },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async ({ query, limit = 8 }) => {
-    const { text } = await searchObservations(query, limit);
-    return { content: [{ type: 'text', text }] };
+    const { text, items } = await searchObservations(query, limit);
+    const claudeIds = new Set(items.map((x) => Number(x?.id)).filter(Number.isFinite));
+    const hsText = await searchHindsightUnified(query, claudeIds, Math.min(limit, 8));
+    const combined = [text, hsText].filter(Boolean).join('\n\n');
+    return { content: [{ type: 'text', text: combined }] };
   });
 
   server.registerTool('memory_recent', {
@@ -320,17 +403,36 @@ function makeServer(scopes = [], platform = 'chatgpt') {
 
   server.registerTool('memory_remember', {
     title: 'Remember durable information',
-    description: 'Explicitly store a durable fact, decision, preference, or work result in central claude-mem. Do not send secrets.' + (platform === 'executor' ? ' Select agent_identity matching your actual Agent when known (Codex, Claude, Pi, etc.); omit for generic executor. The selected source is not an authenticated Agent identity.' : ''),
+    description: 'Explicitly store a durable fact, decision, preference, or work result in central claude-mem (and Hindsight agent-central when configured). Do not send secrets.' + (platform === 'executor' ? ' Select agent_identity matching your actual Agent when known (Codex, Claude, Pi, etc.); omit for generic executor. The selected source is not an authenticated Agent identity.' : ''),
     inputSchema: { content: z.string().min(1).max(20000), project: z.string().max(96).optional(), ...agentIdentityInput },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   }, async ({ content, project = defaultProject, agent_identity }) => {
     requireToolScope(grantedScopes, 'memory:write');
     const source = resolveMemorySource(platform, agent_identity);
     const result = await writeTurn({ userMessage: 'Remember this durable information for future sessions.', assistantMessage: content, project, platform: source, via: platform });
+    if (HINDSIGHT_API_KEY) {
+      result.hindsight_retained = await retainInHindsight({
+        content,
+        project: result.project,
+        platform,
+        source,
+        observationId: result.observation_ids?.[0],
+        sessionId: result.session_id,
+      });
+    }
     return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
   });
 
-  registerWorkerMemoryTools(server, { worker, platform, defaultProject, safeProject, redactSecrets, scopes });
+  registerWorkerMemoryTools(server, {
+    worker,
+    hindsight: HINDSIGHT_API_KEY ? hindsight : undefined,
+    hindsightDefaultBank: HINDSIGHT_DEFAULT_BANK,
+    platform,
+    defaultProject,
+    safeProject,
+    redactSecrets,
+    scopes,
+  });
   return server;
 }
 

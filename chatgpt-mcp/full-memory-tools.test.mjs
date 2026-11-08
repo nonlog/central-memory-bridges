@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { registerWorkerMemoryTools, validateWorkStateFields } from './full-memory-tools.mjs';
+import { registerWorkerMemoryTools, selectHindsightBanks, validateWorkStateFields } from './full-memory-tools.mjs';
 
-function harness(scopes = ['memory:read', 'memory:write'], platform = 'claude-web', version = '14.0.1') {
-  const tools = new Map(), calls = [];
+function harness(scopes = ['memory:read', 'memory:write'], platform = 'claude-web', version = '14.0.1', withHindsight = false) {
+  const tools = new Map(), calls = [], hindsightCalls = [];
   registerWorkerMemoryTools({ registerTool(name, meta, fn) { tools.set(name, { meta, fn }); } }, {
     worker: async (path, opts = {}) => {
       if (path === '/api/version') return { version };
@@ -19,13 +19,32 @@ function harness(scopes = ['memory:read', 'memory:write'], platform = 'claude-we
           sessions:[], prompts:[], totalResults:1,
         };
       }
-      return { ok: true, path };
+      return { ok: true, id: 123, path };
     },
+    hindsight: withHindsight ? async (path, opts = {}) => {
+      hindsightCalls.push({ path, method: opts.method || 'GET', body: opts.body ? JSON.parse(opts.body) : null });
+      if (path === '/v1/default/banks') {
+        return { banks: [{ bank_id: 'agent-central', name: 'Central', fact_count: 50 }, { bank_id: 'coding-agent::central-memory-bridges', name: 'Bridges', fact_count: 18 }] };
+      }
+      if (path.endsWith('/memories/recall')) {
+        return { results: [{ id: 'hs-1', document_id: 'doc-1', text: 'Hindsight recalled fact' }] };
+      }
+      if (path.includes('/knowledge-base/search')) {
+        return { results: [{ page_id: 'kp-1', title: 'Architecture', snippet: 'Bridge overview' }] };
+      }
+      if (path.includes('/knowledge-base/pages/')) {
+        return { id: 'kp-1', title: 'Architecture', content: 'Full page content' };
+      }
+      if (path.endsWith('/reflect')) {
+        return { text: 'Synthesized architectural explanation' };
+      }
+      return { ok: true, path };
+    } : undefined,
     platform, defaultProject: platform, scopes,
     safeProject: (x) => x.replace(/[^a-zA-Z0-9_-]/g,'-'),
     redactSecrets: (x) => x,
   });
-  return { tools, calls, call: (name, args = {}) => tools.get(name).fn(args) };
+  return { tools, calls, hindsightCalls, call: (name, args = {}) => tools.get(name).fn(args) };
 }
 
 test('the shared MCP exposes Worker functionality but no raw host proxy', () => {
@@ -34,8 +53,10 @@ test('the shared MCP exposes Worker functionality but no raw host proxy', () => 
     'memory_get_observations','memory_get_tool_uses','memory_list_records','memory_get_record',
     'memory_projects','memory_stats','work_state_read','work_state_write','team_brief',
     'team_search','session_start_context','claude_mem_forget','memory_delete_session',
-    'memory_admin_permissions']) assert.equal(h.tools.has(name), true, name);
+    'memory_admin_permissions','hindsight_recall','hindsight_reflect','hindsight_retain']) assert.equal(h.tools.has(name), true, name);
   assert.equal(h.tools.has('execute_shell'), false);
+  assert.equal(h.tools.has('delete_bank'), false);
+  assert.equal(h.tools.has('clear_memories'), false);
   assert.equal(h.tools.get('claude_mem_forget').meta.annotations.destructiveHint, true);
 });
 
@@ -174,4 +195,46 @@ test('unknown Worker version fails closed instead of invoking removed search', a
   const h=harness(undefined,'pi','v15.0.1');
   await assert.rejects(h.call('mem_search',{query:'parser'}),/Unknown central Worker version/);
   assert.equal(h.calls.length,0);
+});
+
+test('Hindsight tools route across banks, enforce memory:write on retain, and dual-write save_memory', async () => {
+  assert.deepEqual(
+    selectHindsightBanks(['agent-central', 'coding-agent::central-memory-bridges', 'coding-agent::other'], 'central-memory-bridges oauth'),
+    ['agent-central', 'coding-agent::central-memory-bridges'],
+  );
+
+  const readOnlyHarness = harness(['memory:read'], 'gemini', '15.0.1', true);
+  await assert.rejects(
+    readOnlyHarness.call('hindsight_retain', { content: 'blocked write' }),
+    /memory:write OAuth scope required/,
+  );
+  assert.equal(readOnlyHarness.hindsightCalls.length, 0);
+
+  const h = harness(['memory:read', 'memory:write'], 'executor', '15.0.1', true);
+  const banks = await h.call('hindsight_recall', { list_banks: true });
+  assert.equal(banks.structuredContent.banks.length, 2);
+
+  const page = await h.call('hindsight_recall', { page_id: 'kp-1', bank: 'coding-agent::central-memory-bridges' });
+  assert.equal(page.structuredContent.page.id, 'kp-1');
+
+  const recalled = await h.call('hindsight_recall', { query: 'central-memory-bridges architecture' });
+  assert.deepEqual(recalled.structuredContent.banks, ['agent-central', 'coding-agent::central-memory-bridges']);
+  assert.equal(recalled.structuredContent.memories.length, 2);
+  assert.equal(recalled.structuredContent.knowledge_pages.length, 2);
+
+  const reflected = await h.call('hindsight_reflect', { query: 'Why unify Hindsight into chatgpt-mcp?' });
+  assert.equal(reflected.structuredContent.bank, 'agent-central');
+  assert.match(reflected.structuredContent.text, /Synthesized/);
+
+  await h.call('hindsight_retain', { content: 'Durable Hindsight note', title: 'Decision', agent_identity: 'gemini' });
+  const retainCall = h.hindsightCalls.at(-1);
+  assert.equal(retainCall.path, '/v1/default/banks/agent-central/memories');
+  assert.equal(retainCall.body.items[0].metadata.platformSource, 'gemini');
+  assert.equal(retainCall.body.items[0].metadata.via, 'executor');
+
+  await h.call('save_memory', { text: 'Dual write decision', title: 'Dual', agent_identity: 'codex' });
+  const dualCall = h.hindsightCalls.at(-1);
+  assert.equal(dualCall.path, '/v1/default/banks/agent-central/memories');
+  assert.equal(dualCall.body.items[0].document_id, 'cm-observation-00000123');
+  assert.equal(dualCall.body.items[0].metadata.platformSource, 'codex');
 });

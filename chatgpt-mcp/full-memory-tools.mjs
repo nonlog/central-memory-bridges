@@ -31,8 +31,33 @@ export function validateWorkStateFields(fields) {
   return null;
 }
 
-export function registerWorkerMemoryTools(server, { worker, platform, defaultProject, safeProject, redactSecrets, scopes }) {
+export function selectHindsightBanks(banks = [], query = '', defaultBank = 'agent-central', maxBanks = 4) {
+  const chosen = [defaultBank];
+  const tokens = [...new Set((String(query).toLowerCase().match(/[\p{L}\p{N}_.-]{2,}/gu) || [])
+    .flatMap((w) => w.split(/[_\-.]+/).filter(Boolean).concat(w)))];
+  if (!tokens.length) return chosen;
+  const scored = [];
+  for (const raw of banks) {
+    const id = typeof raw === 'string' ? raw : (raw?.bank_id || raw?.id || '');
+    if (!id || chosen.includes(id)) continue;
+    const short = id.replace(/^coding-agent::/i, '').toLowerCase();
+    const hits = tokens.filter((t) => short === t || (t.length > 2 && short.includes(t)) || (short.length > 2 && t.includes(short))).length;
+    if (hits > 0) scored.push({ id, hits });
+  }
+  scored.sort((a, b) => b.hits - a.hits || a.id.localeCompare(b.id));
+  for (const item of scored) {
+    if (chosen.length >= maxBanks) break;
+    chosen.push(item.id);
+  }
+  return chosen;
+}
+
+export function registerWorkerMemoryTools(server, { worker, hindsight, hindsightDefaultBank = 'agent-central', platform, defaultProject, safeProject, redactSecrets, scopes }) {
   const granted = new Set(scopes);
+  const callHindsight = async (path, options = {}, timeout = 20_000) => {
+    if (typeof hindsight !== 'function') throw new Error('Hindsight integration is not configured on this bridge');
+    return await hindsight(path, options, timeout);
+  };
   const agentIdentityInput = platform === 'executor' ? { agent_identity: z.enum(EXECUTOR_AGENT_IDENTITIES).optional().describe('Self-declared actual calling Agent; omit to use executor. This is not independently verified.') } : {};
   const requireScope = (scope) => {
     if (!granted.has(scope)) throw new Error(scope + ' OAuth scope required; reconnect the MCP connector and authorize this permission.');
@@ -116,10 +141,32 @@ export function registerWorkerMemoryTools(server, { worker, platform, defaultPro
     const source = resolveMemorySource(platform, agent_identity);
     const cleanMetadata = { ...(metadata || {}), platformSource: source, source, ...(platform === 'executor' ? { via: 'executor', identityAttribution: 'agent_selected' } : {}) };
     delete cleanMetadata.sourceFingerprint; // untrusted deduplication tokens must not hide an intended write
-    return response(await post('/api/memory/save', {
+    const saved = await post('/api/memory/save', {
       text: redactSecrets(text), title: title ? redactSecrets(title) : undefined,
       project: safeProject(project || defaultProject), metadata: cleanMetadata,
-    }));
+    });
+    if (typeof hindsight === 'function') {
+      try {
+        const cleanTitle = title ? redactSecrets(title) : '';
+        const cleanText = redactSecrets(text);
+        const docId = Number.isSafeInteger(saved?.id) && saved.id > 0
+          ? 'cm-observation-' + String(saved.id).padStart(8, '0')
+          : undefined;
+        await callHindsight('/v1/default/banks/' + encodeURIComponent(hindsightDefaultBank) + '/memories', {
+          method: 'POST',
+          body: JSON.stringify({
+            async: true,
+            items: [{
+              content: cleanTitle ? `# ${cleanTitle}\n\n${cleanText}` : cleanText,
+              context: `Saved via ${source} (${platform})`,
+              ...(docId ? { document_id: docId } : {}),
+              metadata: { platformSource: source, source, project: safeProject(project || defaultProject), ...(platform === 'executor' ? { via: 'executor', identityAttribution: 'agent_selected' } : {}) },
+            }],
+          }),
+        }, 10_000);
+      } catch {}
+    }
+    return response(saved);
   });
 
   server.registerTool('memory_search_advanced', {
@@ -305,5 +352,140 @@ export function registerWorkerMemoryTools(server, { worker, platform, defaultPro
     const res = await worker('/api/sessions/' + encodeURIComponent(platformSource) + '/' +
       encodeURIComponent(contentSessionId), { method:'DELETE' }, 15_000);
     return response(res);
+  });
+
+  server.registerTool('hindsight_recall', {
+    title: 'Recall Hindsight memory & knowledge pages',
+    description: 'Search Hindsight long-term memory and curated Knowledge Pages across agent-central and per-repository coding-agent::<repo> banks, read a full Knowledge Page by page_id, or list all banks.',
+    inputSchema: {
+      query: z.string().min(1).max(1000).optional(),
+      bank: z.string().min(1).max(128).optional().describe('Hindsight bank ID (e.g. agent-central or coding-agent::<repo>). Omit to search agent-central and matching project banks.'),
+      budget: z.enum(['low', 'mid', 'high']).optional(),
+      max_tokens: z.number().int().min(100).max(4096).optional(),
+      include_knowledge_pages: z.boolean().optional().describe('Also search curated Knowledge Pages in the selected bank(s). Default true.'),
+      page_id: z.string().min(1).max(128).optional().describe('Read one Knowledge Page in full by page_id.'),
+      list_banks: z.boolean().optional().describe('List available Hindsight banks and fact counts.'),
+    },
+    annotations: readOnly,
+  }, async ({ query: q, bank, budget = 'low', max_tokens = 1200, include_knowledge_pages = true, page_id, list_banks }) => {
+    if (list_banks) {
+      const raw = await callHindsight('/v1/default/banks', {}, 10_000);
+      const list = (Array.isArray(raw) ? raw : raw?.banks || []).map((b) =>
+        typeof b === 'string' ? { bank_id: b } : { bank_id: b.bank_id || b.id, name: b.name || '', fact_count: b.fact_count ?? 0 }
+      );
+      return response({ banks: list });
+    }
+    if (page_id) {
+      const targetBank = bank || hindsightDefaultBank;
+      const page = await callHindsight(
+        '/v1/default/banks/' + encodeURIComponent(targetBank) + '/knowledge-base/pages/' + encodeURIComponent(page_id),
+        {}, 10_000,
+      );
+      return response({ bank: targetBank, page });
+    }
+    if (!q || !q.trim()) throw new Error('query, page_id, or list_banks=true is required');
+    const cleanQuery = redactSecrets(q.trim());
+    let targetBanks = bank ? [bank] : [hindsightDefaultBank];
+    if (!bank) {
+      try {
+        const rawBanks = await callHindsight('/v1/default/banks', {}, 6_000);
+        const allBanks = Array.isArray(rawBanks) ? rawBanks : (rawBanks?.banks || []);
+        targetBanks = selectHindsightBanks(allBanks, cleanQuery, hindsightDefaultBank, 4);
+      } catch {}
+    }
+    const memories = [], knowledge_pages = [];
+    await Promise.all(targetBanks.map(async (b) => {
+      const encoded = encodeURIComponent(b);
+      const jobs = [
+        callHindsight('/v1/default/banks/' + encoded + '/memories/recall', {
+          method: 'POST',
+          body: JSON.stringify({ query: cleanQuery, budget, max_tokens }),
+        }, 18_000).then((res) => {
+          for (const item of (Array.isArray(res?.results) ? res.results.slice(0, 12) : [])) {
+            if (item?.text) memories.push({ bank: b, id: item.id || '', document_id: item.document_id || '', text: redactSecrets(item.text), mentioned_at: item.mentioned_at || item.occurred_start || '' });
+          }
+        }).catch((err) => { if (bank) throw err; }),
+      ];
+      if (include_knowledge_pages) {
+        jobs.push(
+          callHindsight('/v1/default/banks/' + encoded + '/knowledge-base/search?' + query({ q: cleanQuery, limit: 5 }), {}, 10_000)
+            .then((res) => {
+              const items = Array.isArray(res) ? res : (res?.results || res?.pages || res?.items || []);
+              for (const page of items.slice(0, 5)) {
+                knowledge_pages.push({ bank: b, ...page });
+              }
+            }).catch(() => {})
+        );
+      }
+      await Promise.all(jobs);
+    }));
+    return response({ banks: targetBanks, memories, knowledge_pages });
+  });
+
+  server.registerTool('hindsight_reflect', {
+    title: 'Deep Hindsight reasoning (reflect)',
+    description: 'Run agentic synthesis over Hindsight memory (agent-central or a coding-agent::<repo> bank) to answer WHY questions, architectural decisions, or root-cause history.',
+    inputSchema: {
+      query: z.string().min(1).max(2000),
+      bank: z.string().min(1).max(128).optional().describe('Target bank ID (default: agent-central, or pass coding-agent::<repo>).'),
+      context: z.string().max(2000).optional(),
+      budget: z.enum(['low', 'mid', 'high']).optional(),
+      max_tokens: z.number().int().min(256).max(4096).optional(),
+    },
+    annotations: readOnly,
+  }, async ({ query: q, bank, context, budget = 'low', max_tokens = 2048 }) => {
+    const targetBank = bank || hindsightDefaultBank;
+    const result = await callHindsight('/v1/default/banks/' + encodeURIComponent(targetBank) + '/reflect', {
+      method: 'POST',
+      body: JSON.stringify({
+        query: redactSecrets(q),
+        budget,
+        max_tokens,
+        ...(context ? { context: redactSecrets(context) } : {}),
+      }),
+    }, 60_000);
+    const payload = typeof result === 'object' && result !== null ? { bank: targetBank, ...result } : { bank: targetBank, text: String(result ?? '') };
+    return response(payload);
+  });
+
+  server.registerTool('hindsight_retain', {
+    title: 'Retain durable memory in Hindsight',
+    description: 'Store a durable fact, decision, or reference document in Hindsight (defaults to agent-central) with secret redaction. Executor callers may select agent_identity from the supported source list.',
+    inputSchema: {
+      content: z.string().min(1).max(20_000),
+      title: z.string().max(500).optional(),
+      context: z.string().max(1000).optional(),
+      bank: z.string().min(1).max(128).optional().describe('Target bank ID (default: agent-central).'),
+      document_id: z.string().max(160).optional(),
+      tags: z.array(z.string().min(1).max(64)).max(10).optional(),
+      ...agentIdentityInput,
+    },
+    annotations: writeOnly,
+  }, async ({ content, title, context, bank, document_id, tags, agent_identity }) => {
+    requireScope('memory:write');
+    const targetBank = bank || hindsightDefaultBank;
+    const source = resolveMemorySource(platform, agent_identity);
+    const cleanTitle = title ? redactSecrets(title) : '';
+    const cleanContent = cleanTitle ? `# ${cleanTitle}\n\n${redactSecrets(content)}` : redactSecrets(content);
+    const metadata = {
+      platformSource: source,
+      source,
+      project: safeProject(defaultProject),
+      ...(platform === 'executor' ? { via: 'executor', identityAttribution: 'agent_selected' } : {}),
+    };
+    const result = await callHindsight('/v1/default/banks/' + encodeURIComponent(targetBank) + '/memories', {
+      method: 'POST',
+      body: JSON.stringify({
+        async: true,
+        items: [{
+          content: cleanContent,
+          context: context ? redactSecrets(context) : `Retained via ${source} (${platform})`,
+          ...(document_id ? { document_id: redactSecrets(document_id) } : {}),
+          metadata,
+          ...(tags?.length ? { tags } : {}),
+        }],
+      }),
+    }, 20_000);
+    return response({ ok: true, bank: targetBank, source, result });
   });
 }
