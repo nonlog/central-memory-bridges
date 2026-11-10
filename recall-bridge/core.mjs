@@ -347,12 +347,13 @@ export async function unifiedRecall({ prompt, cwd, harness = 'unknown', sessionI
         const migrated = item.source === 'claude-mem' || String(item.document || '').startsWith('cm-');
         return !(same && migrated);
       }) : all;
-    const unseen = session ? filtered.filter(item => !session.seen.includes(memoryFingerprint(item))) : filtered;
-    const ranked = rankAndDedup(unseen, { query: q, currentBank: project.currentBank, maxCandidates: config.maxCandidates });
-    const rendered = renderContext(ranked, config.maxChars);
+    const ranked = rankAndDedup(filtered, { query: q, currentBank: project.currentBank, maxCandidates: config.maxCandidates });
+    // Never fill a deduplication gap with lower-ranked, less relevant memories.
+    const unseen = session ? ranked.filter(item => !session.seen.includes(memoryFingerprint(item))) : ranked;
+    const rendered = renderContext(unseen, config.maxChars);
     diagnostic.candidates = all.length;
     diagnostic.selected = rendered.items.length;
-    diagnostic.duplicates = filtered.length - unseen.length;
+    diagnostic.duplicates = ranked.length - unseen.length;
     if (session && rendered.items.length) saveRecallSession(session, rendered.items);
     return { ...rendered, diagnostic };
   } finally {

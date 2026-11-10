@@ -74,6 +74,24 @@ test('hook dedupe isolates sessions, detects changed facts, and resets after com
   }
 });
 
+test('dedupe does not promote unrelated lower-ranked candidates', async () => {
+  const input = {prompt:'Find configuration decisions',cwd:'/tmp',harness:'codex',sessionId:'ranking-'+Date.now()};
+  const state = readRecallSession(input);
+  try {
+    const options = {
+      config:{...CONF,mode:'inject',maxCandidates:2},env:{},
+      projectResolver:()=>({project:'',currentBank:'agent-central'}),
+      fetcher:async()=>({ok:true,json:async()=>({observations:[
+        {id:1,title:'Configuration decisions for current tools'},
+        {id:2,title:'Configuration decisions for memory budgets'},
+        {id:3,title:'Unrelated hardware purchase'},
+      ]})}),
+    };
+    assert((await unifiedRecall(input,options)).context);
+    assert.equal((await unifiedRecall(input,options)).context,'');
+  } finally { rmSync(state.file,{force:true}); }
+});
+
 test('readConfig validates mode and scheme', () => {
   assert.equal(readConfig({ configPath: '/no-such-file.json' }).mode, 'shadow');
   const dir = mkdtempSync(join(tmpdir(), 'unified-recall-'));

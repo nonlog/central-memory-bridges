@@ -25,7 +25,7 @@ terminal/Agent/MCP processes after changing this configuration. Direct Node.js
 `fetch()` and the unmodified official MCP have both been tested with the
 Windows proxy environment.
 
-The separately configured `hindsight-global` HTTP MCP remains independent.
+Cross-project memory is provided by the unified recall bridge; a second direct `hindsight-global` MCP is unnecessary.
 
 This is a **read-only** search fan-out for self-hosted Hindsight and upstream
 Claude-mem, with no fork or changes to either upstream service.
@@ -41,7 +41,7 @@ Claude-mem, with no fork or changes to either upstream service.
 On Windows:
 
 1. Install in your *own checked-out repository* with
-   `node recall-bridge/install.mjs install`. This stages three source files
+   `node recall-bridge/install.mjs install`. This stages four source files
    under `~/.central-memory-bridges/runtime` and merges one
    `UserPromptSubmit` hook each into `~/.codex/hooks.json` and
    `~/.claude/settings.json`. It backs up touched config first.
@@ -61,10 +61,10 @@ The `~/.central-memory-bridges/recall.json` config can include:
   "mode": "shadow",
   "modes": {"codex": "shadow", "claude-code": "shadow", "pi": "shadow"},
   "timeoutMs": 8000,
-  "maxChars": 8000,
-  "maxCandidates": 12,
-  "maxBanks": 5,
-  "searchLimit": 8,
+  "maxChars": 2500,
+  "maxCandidates": 4,
+  "maxBanks": 4,
+  "searchLimit": 6,
   "workerUrl": "https://claude-mem.414222.xyz",
   "hindsightUrl": "https://hindsight.414222.xyz",
   "hindsightTokenEnv": "HINDSIGHT_API_TOKEN"
@@ -82,7 +82,7 @@ The bridge resolves the canonical Git root (including linked worktrees) and
 the official Hindsight `mapPathToBank` config. It always searches the current
 project and `agent-central`; additional banks are chosen by names appearing
 in the prompt and by project names from Claude-mem's global search results.
-When only a few project banks exist, it searches all of them.
+Banks without a project-name or Worker-index match are skipped.
 
 The `maxBanks` cap matters: **this is not an unbounded search across every
 Bank when the number of projects exceeds the configured limit**. Expand
@@ -93,6 +93,8 @@ The migration produced Hindsight document IDs such as
 `cm-observation-00037438`. These are paired with the original Claude-mem
 observation `37438` and deduplicated *without deleting either copy*.
 Remaining similar content is deduplicated by normalized text.
+
+Known acknowledgments skip network recall. Persistent hook contexts also suppress previously emitted facts within the same session. Deduplication applies after ranking and never fills the gap with less relevant records. See [the context budget](../docs/MEMORY_CONTEXT_BUDGET.md) for temporary Pi/Hermes context and compaction behavior.
 
 Hindsight already uses its configured reranker inside each Bank. Cross-bank
 ranking then combines those scores with token overlap and a current-project
