@@ -20,7 +20,7 @@ async function readStdin() {
 
 async function main() {
   if (['1', 'true'].includes(String(process.env.HINDSIGHT_DISABLE_HOOKS || '').trim().toLowerCase())) return;
-  const harness = process.argv[2] === 'claude-code' ? 'claude-code' : 'codex';
+  const harness = ['claude-code', 'factory-droid'].includes(process.argv[2]) ? process.argv[2] : 'codex';
   const payload = await readStdin();
   const prompt = String(payload.prompt || payload.user_prompt || '');
   const cwd = String(payload.cwd || process.cwd());
@@ -30,7 +30,9 @@ async function main() {
   const userConfigFile = join(homedir(), '.hindsight', 'coding-agent.json');
   let hindsightConfig;
   try { hindsightConfig = JSON.parse(readFileSync(userConfigFile, 'utf8')); } catch {}
-  const result = await unifiedRecall({ prompt, cwd, harness }, { config, hindsightConfig });
+  const sessionId = String(payload.session_id || payload.sessionId || '');
+  const transcriptPath = String(payload.transcript_path || payload.transcriptPath || '');
+  const result = await unifiedRecall({ prompt, cwd, harness, sessionId, transcriptPath }, { config, hindsightConfig });
   recordRecallDiagnostic(result.diagnostic);
   if (mode !== 'inject' || !result.context) return;
   process.stdout.write(JSON.stringify({

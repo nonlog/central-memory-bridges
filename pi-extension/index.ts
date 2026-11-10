@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { modeFor, readConfig, unifiedRecall } from "../recall-bridge/core.mjs";
+import { isTrivialRecallPrompt, modeFor, readConfig, unifiedRecall } from "../recall-bridge/core.mjs";
 import { recordRecallDiagnostic } from "../recall-bridge/telemetry.mjs";
 import { workerSearchMajor, planMemorySearch, planDumbSearch, formatWorkerSearchResult, compactSmartSearchIndex } from "../shared/worker-search-compat.mjs";
 
@@ -191,6 +191,8 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
     memory: string;
     semanticContext: string;
     unifiedContext: string;
+    unifiedCache: string;
+    unifiedQuery: string;
     unifiedEntryId?: string;
     entryId?: string;
     initialized: boolean;
@@ -324,6 +326,8 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
       memory: "",
       semanticContext: "",
       unifiedContext: "",
+      unifiedCache: "",
+      unifiedQuery: "",
       initialized: false,
       anchored: false,
       excluded: true,
@@ -424,7 +428,10 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
   on("session_fork", beginSession);
 
   on("before_agent_start", resetTurn);
-  on("session_tree", resetTurn);
+  on("session_tree", async (event: any, ctx: any) => {
+    if (current) { current.unifiedCache = ""; current.unifiedQuery = ""; }
+    await resetTurn(event, ctx);
+  });
 
   // Pi persists the user SessionEntry before context_with_system. This is the
   // first lifecycle point where the real persisted entry.id can safely become
@@ -534,8 +541,13 @@ export default function centralClaudeMem(pi: ExtensionAPI) {
           hindsightConfig = JSON.parse(readFileSync(path.join(homedir(), ".hindsight", "coding-agent.json"), "utf8"));
         } catch {}
         const lookUp = async () => {
+          if (isTrivialRecallPrompt(prompt) || prompt === session.unifiedQuery) return session.unifiedCache;
           const result = await unifiedRecall({ prompt, cwd, harness: "pi" }, { config, hindsightConfig });
           recordRecallDiagnostic(result.diagnostic);
+          if (!result.diagnostic.failures.length) {
+            session.unifiedQuery = prompt;
+            session.unifiedCache = result.context;
+          }
           return result.context;
         };
         if (mode === "shadow") {

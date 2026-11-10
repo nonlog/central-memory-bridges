@@ -261,6 +261,7 @@ class ClaudeMemMemoryProvider(MemoryProvider):
         self._last_prompt_at = 0.0
         self._lock = threading.RLock()
         self._hermes_home = ""
+        self._recall_context = ""
 
     @property
     def name(self) -> str:
@@ -288,7 +289,7 @@ class ClaudeMemMemoryProvider(MemoryProvider):
             },
             {
                 "key": "auto_recall",
-                "description": "Inject recent central Hermes memory before substantive turns.",
+                "description": "Reuse a bounded recent-memory block throughout each Hermes session.",
                 "default": "true",
                 "choices": ["true", "false"],
             },
@@ -305,7 +306,7 @@ class ClaudeMemMemoryProvider(MemoryProvider):
             },
             {
                 "key": "max_context_chars",
-                "description": "Maximum characters of automatic central memory context injected per turn.",
+                "description": "Maximum characters in the session's reusable central memory context.",
                 "default": str(_DEFAULT_MAX_CONTEXT_CHARS),
             },
         ]
@@ -347,11 +348,14 @@ class ClaudeMemMemoryProvider(MemoryProvider):
         self._record_prompt(message)
 
     def prefetch(self, query: str, *, session_id: str = "") -> str:
-        if not self._auto_recall or is_trivial_prompt(query):
+        if not self._auto_recall:
             return ""
         if session_id and session_id != self._session_id:
             with self._lock:
                 self._switch_session(session_id)
+        # Hermes assembles this block afresh each turn; reuse it instead of dropping it.
+        if self._recall_context or is_trivial_prompt(query):
+            return self._recall_context
         projects = ",".join(self._projects)
         path = "/api/context/inject?" + urllib.parse.urlencode({"projects": projects})
         text = self._get_text(path, timeout=_HTTP_TIMEOUT)
@@ -372,7 +376,8 @@ class ClaudeMemMemoryProvider(MemoryProvider):
         text = "\n\n".join(blocks)
         if len(text) > self._max_context_chars:
             text = text[: self._max_context_chars].rstrip() + "\n[central memory context truncated]"
-        return "## Claude-Mem Central Context\n" + text
+        self._recall_context = "## Claude-Mem Central Context\n" + text
+        return self._recall_context
 
     def queue_prefetch(self, query: str, *, session_id: str = "") -> None:
         return None
@@ -529,6 +534,7 @@ class ClaudeMemMemoryProvider(MemoryProvider):
         )
         self._last_prompt = ""
         self._last_prompt_at = 0.0
+        self._recall_context = ""
 
     def _same_recent_prompt(self, prompt: str) -> bool:
         return (

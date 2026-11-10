@@ -21,6 +21,8 @@ export function recordRecallDiagnostic(data) {
       failures: Array.isArray(data.failures) ? data.failures.length : 0,
       candidates: Number(data.candidates) || 0,
       selected: Number(data.selected) || 0,
+      duplicates: Number(data.duplicates) || 0,
+      skipped: data.skipped === 'trivial-prompt' ? 'trivial-prompt' : '',
       elapsedMs: Number(data.elapsedMs) || 0,
     };
     appendFileSync(filename, JSON.stringify(record) + '\n', { encoding: 'utf8', mode: 0o600 });

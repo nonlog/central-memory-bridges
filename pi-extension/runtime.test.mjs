@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 process.env.CLAUDE_MEM_WORKER_URL = "https://worker.test";
 process.env.CLAUDE_MEM_SEMANTIC_INJECT = "false";
@@ -316,5 +319,36 @@ assert.equal(
   wsBefore,
   "invalid Work State requests must not reach the Worker",
 );
+
+const recallDirectory = mkdtempSync(join(tmpdir(), 'pi-recall-test-'));
+const oldConfig = process.env.MEMORY_RECALL_CONFIG;
+const oldToken = process.env.HINDSIGHT_API_TOKEN;
+try {
+  process.env.MEMORY_RECALL_CONFIG = join(recallDirectory, 'recall.json');
+  process.env.HINDSIGHT_API_TOKEN = 'test-only-token';
+  writeFileSync(process.env.MEMORY_RECALL_CONFIG, JSON.stringify({mode:'inject'}));
+  initMode = 'normal';
+  nativePromptCurrent = true;
+  await emit('session_start');
+  const searchCount = () => calls.filter(call => call.route === '/api/search').length;
+  const recalled = await ask('Find past parser decisions', 'recall-first');
+  const afterFirst = searchCount();
+  assert.match(recalled.result.messages[0].content, /Parser fixed/);
+  const repeat = await ask('Find past parser decisions', 'recall-repeat');
+  assert.equal(searchCount(), afterFirst);
+  assert.match(repeat.result.messages[0].content, /Parser fixed/, 'ephemeral memory remains visible');
+  const acknowledgment = await ask('继续', 'recall-acknowledgment');
+  assert.equal(searchCount(), afterFirst);
+  assert.match(acknowledgment.result.messages[0].content, /Parser fixed/);
+  await emit('session_tree');
+  await ask('Find past parser decisions', 'recall-after-tree');
+  assert.equal(searchCount(), afterFirst + 1, 'branch changes invalidate recall cache');
+} finally {
+  if (oldConfig === undefined) delete process.env.MEMORY_RECALL_CONFIG;
+  else process.env.MEMORY_RECALL_CONFIG = oldConfig;
+  if (oldToken === undefined) delete process.env.HINDSIGHT_API_TOKEN;
+  else process.env.HINDSIGHT_API_TOKEN = oldToken;
+  rmSync(recallDirectory,{recursive:true,force:true});
+}
 
 console.log("Pi extension runtime lifecycle tests passed.");

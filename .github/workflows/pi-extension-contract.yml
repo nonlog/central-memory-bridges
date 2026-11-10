@@ -5,12 +5,14 @@ on:
     paths:
       - "pi-extension/**"
       - "shared/**"
+      - "recall-bridge/**"
       - "package.json"
       - ".github/workflows/pi-extension-contract.yml"
   pull_request:
     paths:
       - "pi-extension/**"
       - "shared/**"
+      - "recall-bridge/**"
       - "package.json"
       - ".github/workflows/pi-extension-contract.yml"
 

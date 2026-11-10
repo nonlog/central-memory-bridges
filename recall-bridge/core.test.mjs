@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   buildContext, candidatesFromClaude, candidatesFromHindsight,
-  chooseBanks, modeFor, projectFor, rankAndDedup, readConfig, redact, unifiedRecall,
+  chooseBanks, isTrivialRecallPrompt, modeFor, projectFor, rankAndDedup, readConfig, redact, unifiedRecall,
 } from './core.mjs';
+import { readRecallSession } from './session.mjs';
 
 const CONF = {
   mode: 'shadow', timeoutMs: 3000, maxChars: 2300, maxCandidates: 8,
@@ -15,6 +16,63 @@ const CONF = {
   hindsightUrl: 'https://hindsight.example.test',
   hindsightTokenEnv: 'HINDSIGHT_API_TOKEN',
 };
+
+test('known acknowledgments skip network without dropping short technical requests', async () => {
+  for (const prompt of ['hello!', '好的', '继续。', 'thanks', '/help']) {
+    assert(isTrivialRecallPrompt(prompt));
+    const result = await unifiedRecall({ prompt, cwd: '/tmp' }, {
+      config: CONF, fetcher: () => { throw Error('must not fetch'); },
+    });
+    assert.equal(result.context, '');
+    assert.equal(result.diagnostic.skipped, 'trivial-prompt');
+  }
+  for (const prompt of ['修复', 'SSH', '继续优化记忆配置', 'hello world compiler bug']) assert(!isTrivialRecallPrompt(prompt));
+});
+
+test('empty retention requests are not useful memories', () => {
+  const items = [
+    {key:'empty',text:'Durable memory retention requested for future sessions. No specific payload content was included.'},
+    {key:'useful',text:'Keep IOTFRESH and Log configuration separate.'},
+  ];
+  assert.deepEqual(rankAndDedup(items).map(x => x.key), ['useful']);
+});
+
+test('hook dedupe isolates sessions, detects changed facts, and resets after compaction', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'recall-session-test-'));
+  const transcriptPath = join(dir, 'transcript.jsonl');
+  writeFileSync(transcriptPath, '');
+  let text = 'Use the current verified configuration for this project.';
+  const files = new Set();
+  const fetcher = async () => ({ok:true,json:async()=>({observations:[{id:8,title:text}],sessions:[]})});
+  const options = {config:{...CONF,mode:'inject'},fetcher,env:{},projectResolver:()=>({project:'',currentBank:'agent-central'})};
+  const call = async (harness, sessionId = dir) => {
+    const input = {prompt:'Find past configuration decisions',cwd:dir,harness,sessionId,transcriptPath};
+    files.add(readRecallSession(input).file);
+    return unifiedRecall(input, options);
+  };
+  try {
+    for (const harness of ['codex','claude-code','factory-droid']) {
+      assert((await call(harness)).context);
+      assert.equal((await call(harness)).context, '');
+    }
+    assert((await call('codex',dir+'-another')).context);
+    text = 'The configuration was corrected; use the newer verified setting.';
+    assert((await call('codex')).context);
+    assert.equal((await call('codex')).context, '');
+    writeFileSync(transcriptPath, JSON.stringify({type:'system',subtype:'compact_boundary',timestamp:'new'})+'\n');
+    assert((await call('codex')).context);
+    assert.equal((await call('codex')).context, '');
+    const stateFile = readRecallSession({cwd:dir,harness:'codex',sessionId:dir,transcriptPath}).file;
+    const state = JSON.parse(readFileSync(stateFile,'utf8'));
+    assert(!JSON.stringify(state).includes(text), 'state contains hashes, never memory text');
+    state.updatedAt = 0;
+    writeFileSync(stateFile,JSON.stringify(state));
+    assert((await call('codex')).context);
+  } finally {
+    for (const file of files) rmSync(file,{force:true});
+    rmSync(dir,{recursive:true,force:true});
+  }
+});
 
 test('readConfig validates mode and scheme', () => {
   assert.equal(readConfig({ configPath: '/no-such-file.json' }).mode, 'shadow');

@@ -64,7 +64,7 @@ for (const [name,file] of Object.entries(paths)) {
 }
 if (command === 'install') {
   mkdirSync(runtime,{recursive:true});
-  for (const file of ['core.mjs','hook.mjs','telemetry.mjs']) {
+  for (const file of ['core.mjs','hook.mjs','telemetry.mjs','session.mjs']) {
     copyFileSync(join(dirname(fileURLToPath(import.meta.url)),file),join(runtime,file));
   }
   const conf = read(paths.config);

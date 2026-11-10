@@ -39,6 +39,29 @@ spec.loader.exec_module(bridge)
 
 
 class HermesBridgeContractTests(unittest.TestCase):
+    def test_prefetch_reuses_visible_context_and_resets_on_session_switch(self):
+        provider = bridge.ClaudeMemMemoryProvider(config={})
+        requests = []
+        def get_text(path, **kwargs):
+            requests.append(path)
+            return 'Verified durable memory'
+        provider._get_text = get_text
+        first = provider.prefetch('Find past decisions', session_id='first')
+        self.assertIn('Verified durable memory', first)
+        self.assertEqual(provider.prefetch('Another task', session_id='first'), first)
+        self.assertEqual(provider.prefetch('', session_id='first'), first)
+        self.assertEqual(len(requests), 1)
+        provider.on_session_switch('second')
+        self.assertEqual(provider.prefetch('Find past decisions', session_id='second'), first)
+        self.assertEqual(len(requests), 2)
+
+    def test_failed_prefetch_is_retried(self):
+        provider = bridge.ClaudeMemMemoryProvider(config={})
+        responses = iter(['', 'Recovered memory'])
+        provider._get_text = lambda *args, **kwargs: next(responses)
+        self.assertEqual(provider.prefetch('Find prior decisions'), '')
+        self.assertIn('Recovered memory', provider.prefetch('Find prior decisions'))
+
     def test_lean_fastpath_only_when_all_providers_are_claude_mem(self):
         bridge._install_lean_capture_fastpath()
         first = FakeMemoryManager.sync_all
