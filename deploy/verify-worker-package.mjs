@@ -44,7 +44,13 @@ assert.match(read('plugin/ui/work-view/index.html'),/\/work-view\/assets\/index-
 const html=read('plugin/ui/work-view/index.html');
 const entry=/\/work-view\/assets\/(index-[A-Za-z0-9_.-]+\.js)/.exec(html);
 assert.ok(entry,'Official React My Work entry is missing');
-const react=read('plugin/ui/work-view/assets/'+entry[1]);
-assert.ok(react.includes('id:e.id,contentFingerprint:e.contentFingerprint,'),'Real My Work status mapper disappeared');
-assert.ok(react.includes('case`unknown`:return{state:'),'My Work unknown state contract changed');
+const assetsDir='plugin/ui/work-view/assets';
+const assetFiles=fs.readdirSync(path.join(root,assetsDir)).filter(f=>f.endsWith('.js'));
+assert.ok(assetFiles.length>0,'Official React My Work assets are missing');
+// 15.16.0 code-split the My Work UI: the status mapper moved out of the entry
+// bundle into a lazy chunk (ui-message-*.js) and the minified variable was
+// renamed, so match the mapper shape across all chunks, not one pinned string.
+const reactAll=assetFiles.map(f=>read(path.join(assetsDir,f))).join('\n');
+assert.ok(/id:[A-Za-z_$][\w$]*\.id,contentFingerprint:[A-Za-z_$][\w$]*\.contentFingerprint,/.test(reactAll),'Real My Work status mapper disappeared');
+assert.ok(reactAll.includes('case`unknown`:return{state:'),'My Work unknown state contract changed');
 console.log(`Checked actual claude-mem ${pkg.version} npm Worker HTTP/MCP/hook/spool package contracts`);
