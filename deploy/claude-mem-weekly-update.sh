@@ -319,6 +319,7 @@ exact={
     "CLAUDE_MEM_QUOTA_FALLBACK_MODEL", "CLAUDE_MEM_HOOK_FAIL_LOUD_THRESHOLD",
     "CLAUDE_MEM_WORKER_INGEST_TOKEN", "CLAUDE_MEM_HOOK_SPOOL_TRANSPORT",
     "CLAUDE_MEM_WORK_VIEW_AUTO_REFRESH",
+    "CLAUDE_MEM_AUTO_UPDATE",
 }
 for k,v in old.items():
     if k in exact or any(k.startswith(pre) for pre in prefixes):
