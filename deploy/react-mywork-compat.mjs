@@ -83,21 +83,62 @@ export function findReactBundles(root) {
 }
 
 export function updateReactBundle(bundlePath, assetSourceDir, check) {
-  const current=fs.readFileSync(bundlePath,'utf8');
-  const next=patchReactBundle(current);
   const assets=path.dirname(bundlePath),htmlPath=path.join(assets,'..','index.html');
-  const digest=createHash('sha256').update(next).digest('hex').slice(0,16);
+  // Upstream 15.16.0 code-split the My Work UI across lazy chunks: the
+  // registry/avatar/mapper live in ui-message-*.js and the rich badge/labels
+  // in collapsible-*.js, while the entry keeps only a compact badge. Patch
+  // every chunk that holds overlay targets. Chunks are patched in place:
+  // the import graph between them is dense and cyclic, so renaming a chunk
+  // would mean rewriting references in many files. The entry keeps the
+  // content-hashed rename (index-cmb-*.js) so a stale cached entry can never
+  // serve new code.
+  const isGenerated=f=>/^index-cmb-[0-9a-f]+\.js$/.test(path.basename(f));
+  // A patched registry keeps the original identities as a prefix and gains
+  // the marker, so match either form (fresh or already patched).
+  const hasRegistry=src=>src.includes(REGISTRY_START)||/\[`claude`,`codex`,`gemini`\]/.test(src);
+  const allFiles=fs.readdirSync(assets).filter(f=>f.endsWith('.js')).map(f=>path.join(assets,f));
+  const sourceFiles=allFiles.filter(f=>!isGenerated(f));
+  const entrySource=sourceFiles.find(f=>/^index-[A-Za-z0-9_.-]+\.js$/.test(path.basename(f)));
+  if(!entrySource)throw new Error('Missing React My Work bundle '+bundlePath);
+  let registryCount=0,mapperCount=0;
+  const patched=new Map();
+  for(const file of sourceFiles){
+    const current=fs.readFileSync(file,'utf8');
+    let next=current;
+    if(hasRegistry(current)){registryCount++;next=patchReactBundle(current);}
+    else next=patchMyWorkStatus(current);
+    if(current.includes('case`unknown`'))mapperCount++;
+    patched.set(file,{current,next});
+  }
+  if(registryCount!==1)throw new Error('React My Work platform registry changed');
+  if(mapperCount!==1)throw new Error('My Work status mapper changed');
+  // In check mode the bundle is the generated entry, so re-derive its
+  // content the same way instead of reading it from the source map.
+  let entryNext;
+  if(isGenerated(bundlePath)){
+    const current=fs.readFileSync(bundlePath,'utf8');
+    entryNext=hasRegistry(current)?patchReactBundle(current):patchMyWorkStatus(current);
+  } else entryNext=patched.get(bundlePath).next;
+  const digest=createHash('sha256').update(entryNext).digest('hex').slice(0,16);
   const filename='index-cmb-'+digest+'.js',target=path.join(assets,filename);
   const html=fs.readFileSync(htmlPath,'utf8');
   const oldRef='/work-view/assets/'+path.basename(bundlePath),newRef='/work-view/assets/'+filename;
   const newHtml=html.replace(oldRef,newRef);
   const icons=REQUIRED_ICONS.map(icon=>({from:path.join(assetSourceDir,icon+'.svg'),to:path.join(assets,'agents','bridge-'+icon+'.svg')}));
   const present=icons.every(({from,to})=>fs.existsSync(from)&&fs.existsSync(to)&&fs.readFileSync(from).equals(fs.readFileSync(to)));
-  if(check)return next===current && present && html.includes(newRef) && fs.existsSync(target) && fs.readFileSync(target,'utf8')===next;
+  if(check){
+    // Chunks patched in place must already be in their patched state; the
+    // entry is verified through the generated file, not in place.
+    const chunksOk=[...patched.entries()].every(([file,{current,next}])=>file===entrySource||next===current);
+    return chunksOk && present && html.includes(newRef) && fs.existsSync(target) && fs.readFileSync(target,'utf8')===entryNext;
+  }
+  for(const [file,{current,next}] of patched){
+    if(file!==entrySource&&next!==current)fs.writeFileSync(file,next);
+  }
   for(const {from,to} of icons){const content=fs.readFileSync(from);fs.mkdirSync(path.dirname(to),{recursive:true});if(!fs.existsSync(to)||!fs.readFileSync(to).equals(content))fs.writeFileSync(to,content);}
   // Never reuse a hashed URL for different bytes. An ordinary reload must pick
   // up the new release even behind a browser or CDN cache.
-  if(!fs.existsSync(target)||fs.readFileSync(target,'utf8')!==next)fs.writeFileSync(target,next);
+  if(!fs.existsSync(target)||fs.readFileSync(target,'utf8')!==entryNext)fs.writeFileSync(target,entryNext);
   if(newHtml!==html){fs.writeFileSync(htmlPath+'.tmp',newHtml);fs.renameSync(htmlPath+'.tmp',htmlPath);}
   return true;
 }
