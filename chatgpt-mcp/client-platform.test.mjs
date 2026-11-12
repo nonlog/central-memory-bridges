@@ -12,6 +12,14 @@ test('existing ChatGPT client keeps its source', () => {
 
 test('existing Gemini web OAuth client is recognized without reconnection', () => {
   assert.equal(classified(['https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-abc']), 'gemini');
+  assert.equal(classified([
+    'https://oauth-redirect-sandbox.googleusercontent.com/r/user_bound_custom-mcp-abc',
+    'https://oauth-redirect-test.googleusercontent.com/r/user_bound_custom-mcp-abc',
+    'https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-abc',
+    'https://oauth-redirect-sandbox.googleusercontent.com/a/user_bound_custom-mcp-abc',
+    'https://oauth-redirect-test.googleusercontent.com/a/user_bound_custom-mcp-abc',
+    'https://oauth-redirect.googleusercontent.com/a/user_bound_custom-mcp-abc',
+  ], { client_name: 'Google' }), 'gemini');
   assert.equal(classified(['https://gemini.google.com/oauth-redirect']), 'gemini');
 });
 

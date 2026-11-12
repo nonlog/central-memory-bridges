@@ -3,6 +3,8 @@
 // A missing or unrecognized client stays ChatGPT to preserve legacy behavior.
 const GEMINI_REDIRECT_HOSTS = new Set([
   'oauth-redirect.googleusercontent.com',
+  'oauth-redirect-sandbox.googleusercontent.com',
+  'oauth-redirect-test.googleusercontent.com',
   'gemini.google.com',
 ]);
 
