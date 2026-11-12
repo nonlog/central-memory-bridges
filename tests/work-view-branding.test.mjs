@@ -6,6 +6,7 @@ import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
+import { updateReactBundle } from '../deploy/react-mywork-compat.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const patcher = path.resolve(here, '..', 'deploy', 'apply-claude-mem-viewer-branding.mjs');
@@ -98,4 +99,48 @@ test('viewer CSS and work-view icons coexist and --check is read-only', t => {
   const before = [sha(fs.readFileSync(viewer)),sha(fs.readFileSync(model))];
   assert.equal(invoke(root,'--check').status, 0);
   assert.deepEqual([sha(fs.readFileSync(viewer)),sha(fs.readFileSync(model))],before);
+});
+
+test('React overlays support registry and avatar in the same or separate chunks', t => {
+  const registry = 'var A=[`claude`,`codex`,`gemini`],B={claude:`Claude Code`,codex:`Codex`,gemini:`Gemini`};';
+  const avatar = 'function Sf({tool:e,mono:t=!1,className:n}){let r=n;return e===`claude`?(0,p.jsx)(`svg`,{className:r}):null}';
+  const mapper = 'function m(e,t){switch(e){case`unknown`:return{state:t?`working`:`idle`,stage:`Building`,who:`bot`}}}';
+  for (const split of [false, true]) {
+    const root=fs.mkdtempSync(path.join(os.tmpdir(),'claude-mem-react-test-'));
+    t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+    const assets=path.join(root,'assets'); fs.mkdirSync(assets);
+    const entry=path.join(assets,'index-original.js');
+    fs.writeFileSync(path.join(root,'index.html'),'<script src="/work-view/assets/index-original.js"></script>');
+    fs.writeFileSync(entry,mapper);
+    const registryPath=path.join(assets,'model.js');
+    const avatarPath=split?path.join(assets,'avatar.js'):registryPath;
+    fs.writeFileSync(registryPath,registry+(split?'':avatar));
+    if(split)fs.writeFileSync(avatarPath,avatar);
+    const icons=path.resolve(here,'../deploy/agent-icons');
+    assert.equal(updateReactBundle(entry,icons,false),true);
+    const html=fs.readFileSync(path.join(root,'index.html'),'utf8');
+    const generated=path.join(assets,/index-cmb-[0-9a-f]+\.js/.exec(html)[0]);
+    assert.equal(updateReactBundle(generated,icons,true),true);
+    const patched=fs.readFileSync(avatarPath,'utf8');
+    assert.match(fs.readFileSync(registryPath,'utf8'),/react-registry:start/);
+    assert.match(patched,/react-icons:start/);
+    const render=new Function('tool','const p={jsx:(tag,props)=>({tag,props})};'+patched+';return Sf({tool,className:"icon"})');
+    assert.equal(render('pi').props.src,'/work-view/assets/agents/bridge-pi.svg');
+    assert.equal(render('claude').tag,'svg');
+    assert.equal(updateReactBundle(generated,icons,false),true);
+    assert.equal(fs.readFileSync(avatarPath,'utf8'),patched);
+  }
+});
+
+test('missing React avatar fails before changing any files', t => {
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'claude-mem-react-test-'));
+  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+  const assets=path.join(root,'assets'); fs.mkdirSync(assets);
+  const entry=path.join(assets,'index-original.js');
+  const html='<script src="/work-view/assets/index-original.js"></script>';
+  const source='var A=[`claude`,`codex`,`gemini`],B={claude:`Claude Code`,codex:`Codex`,gemini:`Gemini`};';
+  fs.writeFileSync(path.join(root,'index.html'),html); fs.writeFileSync(entry,source);
+  assert.throws(()=>updateReactBundle(entry,path.resolve(here,'../deploy/agent-icons'),false),/avatar function changed/);
+  assert.equal(fs.readFileSync(entry,'utf8'),source);
+  assert.equal(fs.readFileSync(path.join(root,'index.html'),'utf8'),html);
 });

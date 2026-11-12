@@ -25,29 +25,30 @@ const ICONS = {
 export const REQUIRED_ICONS = [...new Set(Object.values(ICONS))];
 
 export function patchReactBundle(source) {
-  if (source.includes(REGISTRY_START) || source.includes(AVATAR_START)) {
-    if (!source.includes(REGISTRY_START) || !source.includes(REGISTRY_END) ||
-        !source.includes(AVATAR_START) || !source.includes(AVATAR_END))
-      throw new Error('Incomplete React My Work overlay markers');
-    return patchMyWorkStatus(source);
-  }
+  if (source.includes(REGISTRY_START) !== source.includes(REGISTRY_END) ||
+      source.includes(AVATAR_START) !== source.includes(AVATAR_END))
+    throw new Error('Incomplete React My Work overlay markers');
   // Fail closed on upstream changes: never blindly rewrite unrelated React code.
   const originalRegistry = /([A-Za-z_$][\w$]*)=\[`claude`,`codex`,`gemini`\],([A-Za-z_$][\w$]*)=\{claude:`Claude Code`,codex:`Codex`,gemini:`Gemini`\}/g;
   const matches=[...source.matchAll(originalRegistry)];
-  if (matches.length !== 1) throw new Error('React My Work platform registry changed');
-  const [original, allowed, labels] = matches[0];
-  const identities = Object.keys(LABELS);
-  const ext = identities.map(x => JSON.stringify(x)).join(',');
-  const extLabels = Object.entries(LABELS).map(([key,value]) => JSON.stringify(key)+':'+JSON.stringify(value)).join(',');
-  const registry = REGISTRY_START + allowed + '=[`claude`,`codex`,`gemini`,' + ext +
-    '],' + labels + '={claude:`Claude Code`,codex:`Codex`,gemini:`Gemini`,' + extLabels + '}' + REGISTRY_END;
-  let patched = source.replace(original,registry);
+  if (matches.length > 1 || (source.includes('[`claude`,`codex`,`gemini`]') && matches.length !== 1))
+    throw new Error('React My Work platform registry changed');
+  let patched = source;
+  if (matches.length === 1) {
+    const [original, allowed, labels] = matches[0];
+    const ext = Object.keys(LABELS).map(x => JSON.stringify(x)).join(',');
+    const extLabels = Object.entries(LABELS).map(([key,value]) => JSON.stringify(key)+':'+JSON.stringify(value)).join(',');
+    const registry = REGISTRY_START + allowed + '=[`claude`,`codex`,`gemini`,' + ext +
+      '],' + labels + '={claude:`Claude Code`,codex:`Codex`,gemini:`Gemini`,' + extLabels + '}' + REGISTRY_END;
+    patched = patched.replace(original,registry);
+  }
   // Minification renames the component (ID -> PF) and React JSX helper
   // (H -> W) between official releases. Validate the function's signature and
   // native SVG renderer rather than assuming those private variable names.
   const avatarPattern = /function [A-Za-z_$][\w$]*\(\{tool:e,mono:t=!1,className:n\}\)\{/g;
   const avatars = [...patched.matchAll(avatarPattern)];
-  if (avatars.length !== 1) throw new Error('React My Work avatar function changed');
+  if (avatars.length > 1) throw new Error('React My Work avatar function changed');
+  if (!avatars.length || patched.includes(AVATAR_START)) return patchMyWorkStatus(patched);
   const start=avatars[0].index;
   const ret = ';return e===`claude`?';
   const pos = patched.indexOf(ret,start);
@@ -95,29 +96,33 @@ export function updateReactBundle(bundlePath, assetSourceDir, check) {
   const isGenerated=f=>/^index-cmb-[0-9a-f]+\.js$/.test(path.basename(f));
   // A patched registry keeps the original identities as a prefix and gains
   // the marker, so match either form (fresh or already patched).
-  const hasRegistry=src=>src.includes(REGISTRY_START)||/\[`claude`,`codex`,`gemini`\]/.test(src);
+  const hasRegistry=src=>src.includes(REGISTRY_START)||src.includes(REGISTRY_END)||/\[`claude`,`codex`,`gemini`\]/.test(src);
+  const hasAvatar=src=>src.includes(AVATAR_START)||src.includes(AVATAR_END)||/function [A-Za-z_$][\w$]*\(\{tool:e,mono:t=!1,className:n\}\)\{/.test(src);
   const allFiles=fs.readdirSync(assets).filter(f=>f.endsWith('.js')).map(f=>path.join(assets,f));
   const sourceFiles=allFiles.filter(f=>!isGenerated(f));
   const entrySource=sourceFiles.find(f=>/^index-[A-Za-z0-9_.-]+\.js$/.test(path.basename(f)));
   if(!entrySource)throw new Error('Missing React My Work bundle '+bundlePath);
-  let registryCount=0,mapperCount=0;
+  let registryCount=0,avatarCount=0,mapperCount=0;
   const patched=new Map();
   for(const file of sourceFiles){
     const current=fs.readFileSync(file,'utf8');
     let next=current;
-    if(hasRegistry(current)){registryCount++;next=patchReactBundle(current);}
+    if(hasRegistry(current))registryCount++;
+    if(hasAvatar(current))avatarCount++;
+    if(hasRegistry(current)||hasAvatar(current))next=patchReactBundle(current);
     else next=patchMyWorkStatus(current);
     if(current.includes('case`unknown`'))mapperCount++;
     patched.set(file,{current,next});
   }
   if(registryCount!==1)throw new Error('React My Work platform registry changed');
+  if(avatarCount!==1)throw new Error('React My Work avatar function changed');
   if(mapperCount!==1)throw new Error('My Work status mapper changed');
   // In check mode the bundle is the generated entry, so re-derive its
   // content the same way instead of reading it from the source map.
   let entryNext;
   if(isGenerated(bundlePath)){
     const current=fs.readFileSync(bundlePath,'utf8');
-    entryNext=hasRegistry(current)?patchReactBundle(current):patchMyWorkStatus(current);
+    entryNext=hasRegistry(current)||hasAvatar(current)?patchReactBundle(current):patchMyWorkStatus(current);
   } else entryNext=patched.get(bundlePath).next;
   const digest=createHash('sha256').update(entryNext).digest('hex').slice(0,16);
   const filename='index-cmb-'+digest+'.js',target=path.join(assets,filename);
