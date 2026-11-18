@@ -24,10 +24,14 @@ LABELS = {
 # Minified function names can change between upstream releases, so match the
 # semantics of the two source-registry functions rather than fixed identifiers.
 # Match the legacy array selector and the new project-filtered selector in 13.37+.
-BASE_REGISTRY_RE = re.compile(
+# Upstream 16.0.0 moved a function between the source selector and the source
+# registry, so match each function on its own instead of assuming adjacency.
+SELECT_RE = re.compile(
     r'function (?P<select>[A-Za-z_$][\w$]*)\((?P<select_arg>[A-Za-z_$][\w$]*)\)\{'
     r'(?P<prelude>let (?P<active>[A-Za-z_$][\w$]*)=(?P=select_arg)\.sources\.filter\([^;]+\);)?'
     r'return (?P<chosen>[A-Za-z_$][\w$]*)\.includes\("claude"\)\?"claude":(?P=chosen)\.includes\("codex"\)\?"codex":(?P=chosen)\[0\]\|\|null\}'
+)
+REGISTRY_RE = re.compile(
     r'function (?P<registry>[A-Za-z_$][\w$]*)\((?P<registry_arg>[A-Za-z_$][\w$]*)\)\{let (?P<items>[A-Za-z_$][\w$]*)=\["claude","codex",\.\.\.(?P=registry_arg)\];return Array\.from\(new Set\((?P=items)\)\)\}'
 )
 
@@ -86,16 +90,20 @@ CSS = '''    /* AgentDock platform identities BEGIN */
 '''
 
 
-def custom_registry(select_name: str, registry_name: str, arg: str, active: str, prelude: str) -> str:
+def custom_selector(select_name: str, arg: str, active: str, prelude: str) -> str:
     # Preserve upstream's projectsBySource filtering, rather than selecting a
     # source that has no project. Only expand priority among eligible sources.
     source_json = ','.join(f'"{x}"' for x in SOURCES)
     return (
         f'function {select_name}({arg}){{{prelude}for(let _adSource of [{source_json}])'
         f'if({active}.includes(_adSource))return _adSource;return {active}[0]||null}}'
-        f'function {registry_name}(e){{let t=[{source_json},...e];return Array.from(new Set(t))}}'
-        f'{LABEL_FUNC}'
     )
+
+
+def custom_registry_fn(registry_name: str) -> str:
+    source_json = ','.join(f'"{x}"' for x in SOURCES)
+    return f'function {registry_name}(e){{let t=[{source_json},...e];return Array.from(new Set(t))}}'
+
 
 
 def patch_bundle(p: Path):
@@ -121,13 +129,19 @@ def patch_bundle(p: Path):
         changed = True
 
     if LABEL_FUNC not in s:
-        m = BASE_REGISTRY_RE.search(s)
-        if not m:
+        sm = SELECT_RE.search(s)
+        rm = REGISTRY_RE.search(s)
+        if not sm or not rm:
             raise RuntimeError(f'viewer registry pattern changed: {p}')
-        active = m.group('active') or m.group('select_arg')
-        if m.group('chosen') != active:
+        active = sm.group('active') or sm.group('select_arg')
+        if sm.group('chosen') != active:
             raise RuntimeError(f'viewer source selector variables changed: {p}')
-        s = s[:m.start()] + custom_registry(m.group('select'), m.group('registry'), m.group('select_arg'), active, m.group('prelude') or '') + s[m.end():]
+        # Replace the registry first (it sits after the selector), then the
+        # selector, so neither replacement shifts the other's match. The two
+        # functions are no longer assumed adjacent.
+        s = s[:rm.start()] + custom_registry_fn(rm.group('registry')) + LABEL_FUNC + s[rm.end():]
+        sm = SELECT_RE.search(s)
+        s = s[:sm.start()] + custom_selector(sm.group('select'), sm.group('select_arg'), active, sm.group('prelude') or '') + s[sm.end():]
         changed = True
 
     if OLD_OPT in s:

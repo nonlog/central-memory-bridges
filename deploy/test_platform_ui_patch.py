@@ -19,6 +19,12 @@ NEW = (
     'return t.includes("claude")?"claude":t.includes("codex")?"codex":t[0]||null}'
     'function B(e){let t=["claude","codex",...e];return Array.from(new Set(t))}'
 )
+SPLIT = (
+    'function A(e){let t=e.sources.filter(n=>(e.projectsBySource[n]?.length??0)>0);'
+    'return t.includes("claude")?"claude":t.includes("codex")?"codex":t[0]||null}'
+    'function KE(e,t){return JSON.stringify([e??"",t??""])}'
+    'function B(e){let t=["claude","codex",...e];return Array.from(new Set(t))}'
+)
 UI = (
     'function unused(){return E.default.createElement("label",{className:"preview-selector"},'
     '"Source:",E.default.createElement("select",{value:p||"",onChange:_=>f(_.target.value),'
@@ -83,7 +89,7 @@ class TestViewerRegistry(unittest.TestCase):
                 patcher.verify_worker_patch(file)
 
     def test_source_registry_old_and_new_versions(self):
-        for name, selector in [("legacy", OLD), ("project-filtered-13.37", NEW)]:
+        for name, selector in [("legacy", OLD), ("project-filtered-13.37", NEW), ("split-16.0.0", SPLIT)]:
             with self.subTest(name=name), tempfile.TemporaryDirectory() as folder:
                 path = Path(folder) / "viewer-bundle.js"
                 path.write_text(selector + UI, encoding="utf-8")
@@ -96,6 +102,8 @@ class TestViewerRegistry(unittest.TestCase):
                 self.assertIn('"muse-web":"◈ Muse Web"', result)
                 self.assertIn('executor:"⌘ Executor"', result)
                 self.assertIn('gemini:"✦ Gemini"', result)
+                if name == "split-16.0.0":
+                    self.assertIn('function KE(e,t){return JSON.stringify([e??"",t??""])}', result)
                 patcher.patch_bundle(path)
                 self.assertEqual(result, path.read_text(encoding="utf-8"))
                 node_test = (
