@@ -18,7 +18,7 @@ export function applyRequestActivity(raw,request,now=Date.now()) {
 }
 // The rich badge: the function whose body renders the state label.
 function richBadgeMatches(source, badgeMatches, labelMatches) {
-  badgeMatches ??= [...source.matchAll(/function ([A-Za-z_$][\w$]*)\(\{state:e\}\)\{/g)];
+  badgeMatches ??= [...source.matchAll(/function ([A-Za-z_$][\w$]*)\(\{state:e(?:,[^}]*)?\}\)\{/g)];
   labelMatches ??= [...source.matchAll(/var ([A-Za-z_$][\w$]*)=\{working:`(?:Working|Active)`,/g)];
   return badgeMatches.filter(b=>{
     const next=source.indexOf('function ',b.index+12);
@@ -78,10 +78,10 @@ export function patchMyWorkStatus(source) {
   }
   if(hasBadge){
     // Upstream 15.12.0 moved the rich badge's JSX return behind an i18n hook
-    // (function hI({state:e}){let{t}=G();return(0,B.jsx)(...)}), so match the
+    // (function hI({state:e}){...}; 16.0.0 adds a children prop), so match the
     // signature and let the body filters (JSX return, length, label lookup)
     // pick the rich badge over the compact one.
-    const badgeMatches=[...source.matchAll(/function ([A-Za-z_$][\w$]*)\(\{state:e\}\)\{/g)];
+    const badgeMatches=[...source.matchAll(/function ([A-Za-z_$][\w$]*)\(\{state:e(?:,[^}]*)?\}\)\{/g)];
     const labelMatches=[...source.matchAll(/var ([A-Za-z_$][\w$]*)=\{working:`(?:Working|Active)`,/g)];
     const richBadges=richBadgeMatches(source,badgeMatches,labelMatches);
     if(richBadges.length!==1)throw Error('My Work badge contract changed');
@@ -90,7 +90,7 @@ export function patchMyWorkStatus(source) {
     const matchingLabels=labelMatches.filter(l=>originalBody.includes(l[1]+'[e]'));
     if(matchingLabels.length!==1)throw Error('My Work badge label contract changed');
     const labelVar=matchingLabels[0][1];
-    source=source.replace(selected[0],selected[0].replace('{state:e}','{state:e,label:bridgeLabel}'));
+    source=source.replace(selected[0],selected[0].replace('{state:e','{state:e,label:bridgeLabel'));
     const badgeStart=source.indexOf('function '+badgeName+'('),badgeEnd=source.indexOf('function ',badgeStart+12);
     if(badgeEnd<0)throw Error('My Work badge boundary changed');
     let badge=source.slice(badgeStart,badgeEnd);

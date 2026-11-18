@@ -41,3 +41,14 @@ test('15.12.0 badge shape: hook-prefixed rich badge is patched, compact badge is
   assert.doesNotMatch(patched,/Compact,\{state:e\.state,label:/);
   assert.equal(patchMyWorkStatus(patched),patched);
 });
+
+// 16.0.0 shape: the rich badge gained a children prop in its signature.
+const v1600Fixture = v1512Fixture.replace('function Badge({state:e}){', 'function Badge({state:e,children:t}){');
+test('16.0.0 badge shape: children prop in the signature is patched', () => {
+  const patched = patchMyWorkStatus(v1600Fixture);
+  assert.match(patched, /function Badge\(\{state:e,label:bridgeLabel,children:t\}\)/);
+  assert.match(patched, /bridgeLabel\|\|labels\[e\]/);
+  assert.match(patched, /Badge,\{state:e\.state,label:e\.bridgeStatus\}/);
+  assert.doesNotMatch(patched, /function Compact\(\{state:e,label:/);
+  assert.equal(patchMyWorkStatus(patched), patched);
+});
