@@ -54,7 +54,7 @@ Assert-Equal $rejected $true
 $sandbox=Join-Path ([IO.Path]::GetTempPath()) ('central-client-install-'+[guid]::NewGuid().ToString('N'))
 $oldConfig=$env:CLAUDE_CONFIG_DIR
 try {
-  foreach ($clientName in @('IOTFRESH','Log','ThirdComputer')) {
+  foreach ($clientName in @('FirstComputer','Log','ThirdComputer')) {
     $env:CLAUDE_CONFIG_DIR=Join-Path $sandbox $clientName
     & $pwsh -NoProfile -File (Join-Path $PSScriptRoot '../deploy/windows/install-central-client.ps1') -InstallOnly | Out-Null
     Assert-Equal $LASTEXITCODE 0

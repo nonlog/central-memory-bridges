@@ -32,7 +32,7 @@ test('known acknowledgments skip network without dropping short technical reques
 test('empty retention requests are not useful memories', () => {
   const items = [
     {key:'empty',text:'Durable memory retention requested for future sessions. No specific payload content was included.'},
-    {key:'useful',text:'Keep IOTFRESH and Log configuration separate.'},
+    {key:'useful',text:'Keep workstation and laptop configuration separate.'},
   ];
   assert.deepEqual(rankAndDedup(items).map(x => x.key), ['useful']);
 });

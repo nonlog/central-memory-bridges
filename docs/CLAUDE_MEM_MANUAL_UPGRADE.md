@@ -55,7 +55,7 @@ another computer.
 Use the same `claude-mem-central` Scoop package, or run
 `deploy/windows/install-central-client.ps1` from a verified repository checkout.
 The installer backs up old updater files and initializes only the current user.
-It respects `CLAUDE_CONFIG_DIR` and `CODEX_HOME`; it contains no IOTFRESH/Log
+It respects `CLAUDE_CONFIG_DIR` and `CODEX_HOME`; it contains no machine-specific
 paths. Git, Node/npm, Bun, Claude Code and Codex must already be installed.
 
 Configure the existing central ingest credential in that computer's
