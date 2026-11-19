@@ -17,9 +17,10 @@ const WORKER = (process.env.CLAUDE_MEM_WORKER_URL || "https://claude-mem.414222.
 
 const BASE_PROJECT = "pi";
 const PLATFORM_SOURCE = "pi";
-const HTTP_TIMEOUT_MS = 5_000;
+const HTTP_TIMEOUT_MS = clampInt(process.env.CLAUDE_MEM_HTTP_TIMEOUT_MS, 15_000, 3_000, 60_000);
 const SEARCH_TIMEOUT_MS = 45_000;
-const SESSION_CONTEXT_TIMEOUT_MS = 10_000;
+const SESSION_CONTEXT_TIMEOUT_MS = clampInt(process.env.CLAUDE_MEM_CONTEXT_TIMEOUT_MS, 15_000, 3_000, 60_000);
+const HTTP_RETRY_DELAY_MS = 500;
 const SHUTDOWN_FLUSH_MS = 1_500;
 const MAX_CONTEXT_CHARS = clampInt(process.env.CLAUDE_MEM_CONTEXT_MAX_CHARS, 16_000, 2_000, 64_000);
 const MAX_PROMPT_CHARS = 16_000;
@@ -159,12 +160,26 @@ function serializeToolResponse(event: any): unknown {
   );
 }
 
+function isTimeoutError(error: unknown): boolean {
+  const name = (error as any)?.name;
+  return name === "TimeoutError" || name === "AbortError" || String(error).includes("TimeoutError");
+}
+
 async function request(route: string, init: RequestInit = {}, timeoutMs = HTTP_TIMEOUT_MS): Promise<any> {
-  const response = await fetch(WORKER + route, {
-    ...init,
-    headers: { "content-type": "application/json", ...(init.headers || {}) },
-    signal: AbortSignal.timeout(timeoutMs),
-  });
+  let response: Response;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      response = await fetch(WORKER + route, {
+        ...init,
+        headers: { "content-type": "application/json", ...(init.headers || {}) },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      break;
+    } catch (error) {
+      if (attempt >= 1 || !isTimeoutError(error)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, HTTP_RETRY_DELAY_MS));
+    }
+  }
   const text = await response.text();
   if (!response.ok) throw new Error("claude-mem " + response.status + ": " + text.slice(0, 500));
   if (!text) return {};
