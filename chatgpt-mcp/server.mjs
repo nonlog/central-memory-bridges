@@ -14,8 +14,14 @@ const WORKER = (process.env.CLAUDE_MEM_WORKER || 'http://127.0.0.1:37777').repla
 const HINDSIGHT_URL = (process.env.HINDSIGHT_URL || 'http://127.0.0.1:38888').replace(/\/$/, '');
 const HINDSIGHT_API_KEY = (process.env.HINDSIGHT_API_KEY || process.env.HINDSIGHT_API_TOKEN || process.env.HINDSIGHT_ACCESS_KEY || '').trim();
 const HINDSIGHT_DEFAULT_BANK = (process.env.HINDSIGHT_DEFAULT_BANK || 'agent-central').trim();
-const EXTERNAL_BASE = (process.env.EXTERNAL_BASE || 'https://claude-mem.414222.xyz/chatgpt-mcp').replace(/\/$/, '');
+const EXTERNAL_BASE = (process.env.EXTERNAL_BASE || 'https://claude-mem.414222.xyz').replace(/\/$/, '');
 const RESOURCE_URL = `${EXTERNAL_BASE}/mcp`;
+const LEGACY_RESOURCE_URLS = new Set(
+  (process.env.LEGACY_RESOURCE_URLS || `${new URL(EXTERNAL_BASE).origin}/chatgpt-mcp/mcp`)
+    .split(',')
+    .map((item) => item.trim().replace(/\/$/, ''))
+    .filter(Boolean),
+);
 const OAUTH_SECRET = process.env.OAUTH_SECRET || '';
 const ACCESS_TTL = 60 * 60;
 const REFRESH_TTL = 60 * 60 * 24 * 30;
@@ -465,10 +471,10 @@ const resourceMetadata = {
   bearer_methods_supported: ['header'],
 };
 
-for (const path of ['/.well-known/oauth-authorization-server', '/.well-known/oauth-authorization-server/chatgpt-mcp', '/chatgpt-mcp/.well-known/oauth-authorization-server']) {
+for (const path of ['/.well-known/oauth-authorization-server', '/.well-known/oauth-authorization-server/mcp', '/.well-known/oauth-authorization-server/chatgpt-mcp', '/chatgpt-mcp/.well-known/oauth-authorization-server']) {
   app.get(path, (_req, res) => res.json(authMetadata));
 }
-for (const path of ['/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/chatgpt-mcp/mcp', '/chatgpt-mcp/.well-known/oauth-protected-resource']) {
+for (const path of ['/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/mcp', '/.well-known/oauth-protected-resource/chatgpt-mcp/mcp', '/chatgpt-mcp/.well-known/oauth-protected-resource']) {
   app.get(path, (_req, res) => res.json(resourceMetadata));
 }
 
@@ -508,7 +514,7 @@ app.get(['/oauth/authorize', '/chatgpt-mcp/oauth/authorize'], (req, res) => {
     if (!client_id || !redirect_uri || !code_challenge || code_challenge_method !== 'S256') return oauthError(res, 400, 'invalid_request', 'PKCE S256, client_id, and redirect_uri are required');
     const client = open('cl', client_id);
     if (!client.redirect_uris.includes(String(redirect_uri))) return oauthError(res, 400, 'invalid_request', 'redirect_uri is not registered');
-    if (resource && resource !== RESOURCE_URL) return oauthError(res, 400, 'invalid_target', 'resource does not match this MCP server');
+    if (resource && resource !== RESOURCE_URL && !LEGACY_RESOURCE_URLS.has(String(resource).replace(/\/$/, ''))) return oauthError(res, 400, 'invalid_target', 'resource does not match this MCP server');
     const scopes = normalizeScopes(scope);
     const iat = now();
     const code = seal('ac', {
