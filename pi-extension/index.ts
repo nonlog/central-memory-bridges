@@ -9,7 +9,8 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { isTrivialRecallPrompt, modeFor, readConfig, unifiedRecall } from "../recall-bridge/core.mjs";
+import { isTrivialRecallPrompt, modeFor, projectFor, readConfig, unifiedRecall } from "../recall-bridge/core.mjs";
+import { canonicalProjectName, projectNameForCwd } from "../shared/project-name.mjs";
 import { recordRecallDiagnostic } from "../recall-bridge/telemetry.mjs";
 import { workerSearchMajor, planMemorySearch, planDumbSearch, formatWorkerSearchResult, compactSmartSearchIndex } from "../shared/worker-search-compat.mjs";
 
@@ -75,18 +76,14 @@ function redactSecrets(value: unknown): string {
   return text;
 }
 
-function safeProject(value: string, fallback = BASE_PROJECT): string {
-  const cleaned = String(value || fallback)
-    .trim()
-    .replace(/[^A-Za-z0-9._-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 96);
-  return cleaned || fallback;
+function safeProject(value: string, fallback = "General"): string {
+  return canonicalProjectName(value, fallback);
 }
 
 function projectForCwd(cwd?: string): string {
-  const base = path.basename(cwd || process.cwd()) || "default";
-  return safeProject(BASE_PROJECT + "-" + base, "pi-default");
+  const targetCwd = cwd || process.cwd();
+  const gitInfo = projectFor(targetCwd);
+  return projectNameForCwd(targetCwd, { gitProject: gitInfo?.project || "", fallback: "General" });
 }
 
 function isTrivialPrompt(prompt: string): boolean {

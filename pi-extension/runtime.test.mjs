@@ -46,7 +46,7 @@ globalThis.fetch = async (input, init = {}) => {
   if (url.pathname === "/api/dumb-search") return Response.json({content:[{type:"text",text:"dumb-search shallow detail"}]});
   if (url.pathname === "/api/search") return Response.json(
     url.searchParams.get("format") === "json" ? {
-      observations:[{id:7,title:"Parser fixed",project:"pi-project",narrative:"VERY_PRIVATE"}],
+      observations:[{id:7,title:"Parser fixed",project:"project",narrative:"VERY_PRIVATE"}],
       sessions:[],prompts:[],totalResults:1,
     } : {content:[{type:"text",text:"MCP default response"}]}
   );
@@ -224,7 +224,7 @@ assert.equal(
 const autoSearch = await tools.get("mem_search").execute("mem-auto", {
   query: "parser fix",
   mode: "auto",
-  project: "pi-project",
+  project: "project",
   limit: 8,
   maxDetails: 2,
   depthBefore: 1,
@@ -235,7 +235,7 @@ assert.equal(autoCall.method, "POST");
 assert.deepEqual(autoCall.body, {
   mode: "auto",
   query: "parser fix",
-  project: "pi-project",
+  project: "project",
   limit: 8,
   maxDetails: 2,
   depthBefore: 1,
@@ -269,7 +269,7 @@ assert.match(dumb14.content[0].text,/mem-search/);
 // a cached obsolete /api/mem-search route.
 workerVersion = "15.0.1";
 const smart15 = await tools.get("mem_search").execute("smart-15",{
-  query:"parser fix",project:"pi-project",limit:8,mode:"guided",
+  query:"parser fix",project:"project",limit:8,mode:"guided",
 });
 const smartCall = [...calls].reverse().find(call=>call.route==="/api/search");
 assert.equal(smartCall.method,"GET");

@@ -4,14 +4,14 @@ on:
   push:
     branches: [master]
     paths:
-      - 'chatgpt-mcp/**'
+      - 'web-mcp/**'
       - 'droid-marketplace/**'
       - 'shared/**'
       - 'deploy/apply-claude-mem-viewer-branding.mjs'
       - '.github/workflows/central-memory-mcp-checks.yml'
   pull_request:
     paths:
-      - 'chatgpt-mcp/**'
+      - 'web-mcp/**'
       - 'droid-marketplace/**'
       - 'shared/**'
       - 'deploy/apply-claude-mem-viewer-branding.mjs'
@@ -27,13 +27,13 @@ jobs:
           node-version: '22'
       - name: Validate syntax and platform identity tests
         run: |
-          node --check chatgpt-mcp/client-platform.mjs
-          node --check chatgpt-mcp/server.mjs
+          node --check web-mcp/client-platform.mjs
+          node --check web-mcp/server.mjs
           node --check droid-marketplace/claude-mem/hooks/claude-mem-hook.mjs
           node --check droid-marketplace/claude-mem/hooks/transcript.mjs
           node --check deploy/apply-claude-mem-viewer-branding.mjs
           python3 -m py_compile deploy/reapply-claude-mem-platform-ui.py
-          node --test chatgpt-mcp/client-platform.test.mjs
+          node --test web-mcp/client-platform.test.mjs
           node --test droid-marketplace/claude-mem/hooks/transcript.test.mjs
       - name: Verify viewer overlay can be reapplied
         run: |

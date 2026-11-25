@@ -4,7 +4,7 @@ on:
     branches: [master, 'codex/**']
     paths:
       - 'shared/**'
-      - 'chatgpt-mcp/**'
+      - 'web-mcp/**'
       - 'pi-extension/**'
       - 'deploy/check-worker-upgrade.*'
       - 'deploy/worker-upgrade-policy.json'
@@ -25,12 +25,12 @@ jobs:
         with:
           node-version: '24'
       - name: Restore MCP dependencies
-        run: npm ci --prefix chatgpt-mcp --no-audit --no-fund
+        run: npm ci --prefix web-mcp --no-audit --no-fund
       - name: Worker v14/v15 route plans, MCP schema, and upgrade gate
         run: |
-          node --check chatgpt-mcp/server.mjs
+          node --check web-mcp/server.mjs
           node --check shared/worker-search-compat.mjs
-          node --test shared/worker-search-compat.test.mjs chatgpt-mcp/full-memory-tools.test.mjs deploy/check-worker-upgrade.test.mjs
+          node --test shared/worker-search-compat.test.mjs web-mcp/full-memory-tools.test.mjs deploy/check-worker-upgrade.test.mjs
           node pi-extension/contract.test.mjs
       - name: Fetch pinned upstream v15.1.0 contract sources
         run: |

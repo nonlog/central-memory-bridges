@@ -16,7 +16,7 @@ on:
     branches: [master]
     paths:
       - 'deploy/**'
-      - 'chatgpt-mcp/**'
+      - 'web-mcp/**'
       - 'memory-admin-mcp/**'
       - 'openclaw-memory-admin/**'
       - 'hermes-provider/**'
@@ -28,7 +28,7 @@ on:
   pull_request:
     paths:
       - 'deploy/**'
-      - 'chatgpt-mcp/**'
+      - 'web-mcp/**'
       - 'memory-admin-mcp/**'
       - 'openclaw-memory-admin/**'
       - 'hermes-provider/**'
@@ -98,9 +98,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npm ci --prefix chatgpt-mcp --ignore-scripts --no-audit --no-fund
+          npm ci --prefix web-mcp --ignore-scripts --no-audit --no-fund
           npm install --prefix memory-admin-mcp --ignore-scripts --no-audit --no-fund
-          node --test shared/worker-search-compat.test.mjs chatgpt-mcp/full-memory-tools.test.mjs chatgpt-mcp/agent-identity.test.mjs chatgpt-mcp/client-platform.test.mjs
+          node --test shared/worker-search-compat.test.mjs web-mcp/full-memory-tools.test.mjs web-mcp/agent-identity.test.mjs web-mcp/client-platform.test.mjs
           node --test shared/confirmed-delete.test.mjs memory-admin-mcp/server.test.mjs
           node --test droid-marketplace/claude-mem/hooks/transcript.test.mjs
           node --test tests/mywork-status.test.mjs tests/work-view-branding.test.mjs

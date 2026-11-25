@@ -3,7 +3,7 @@ on:
   push:
     branches: [master]
     paths:
-      - 'chatgpt-mcp/**'
+      - 'web-mcp/**'
       - 'droid-marketplace/**'
       - 'shared/**'
       - 'deploy/apply-claude-mem-viewer-branding.mjs'
@@ -12,7 +12,7 @@ on:
       - '.github/workflows/web-memory-mcp.yml'
   pull_request:
     paths:
-      - 'chatgpt-mcp/**'
+      - 'web-mcp/**'
       - 'droid-marketplace/**'
       - 'shared/**'
       - 'hermes-provider/**'
@@ -33,19 +33,19 @@ jobs:
         with:
           python-version: '3.12'
       - name: Prepare MCP dependencies
-        run: npm ci --prefix chatgpt-mcp --no-audit --no-fund
+        run: npm ci --prefix web-mcp --no-audit --no-fund
       - name: Syntax, complete memory tool and platform tests
         run: |
-          node --check chatgpt-mcp/server.mjs
-          node --check chatgpt-mcp/full-memory-tools.mjs
-          node --check chatgpt-mcp/agent-identity.mjs
-          node --check chatgpt-mcp/client-platform.mjs
+          node --check web-mcp/server.mjs
+          node --check web-mcp/full-memory-tools.mjs
+          node --check web-mcp/agent-identity.mjs
+          node --check web-mcp/client-platform.mjs
           node --check droid-marketplace/claude-mem/hooks/claude-mem-hook.mjs
           node --check droid-marketplace/claude-mem/hooks/transcript.mjs
           node --check memory-admin-mcp/server.mjs
           node --check openclaw-memory-admin/dist/index.js
           node --check deploy/apply-claude-mem-viewer-branding.mjs
-          node --test chatgpt-mcp/client-platform.test.mjs chatgpt-mcp/full-memory-tools.test.mjs chatgpt-mcp/agent-identity.test.mjs
+          node --test shared/project-name.test.mjs web-mcp/client-platform.test.mjs web-mcp/full-memory-tools.test.mjs web-mcp/agent-identity.test.mjs
           node --test droid-marketplace/claude-mem/hooks/transcript.test.mjs
           python3 -m unittest discover -s deploy -p 'test_platform_ui_patch.py' -v
           python3 -m unittest discover -s hermes-provider -p 'test_work_state.py' -v

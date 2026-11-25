@@ -26,7 +26,7 @@ jobs:
       - name: Syntax checks
         run: |
           node --check deploy/apply-claude-mem-viewer-branding.mjs
-          node --check chatgpt-mcp/server.mjs
+          node --check web-mcp/server.mjs
           python -m py_compile deploy/reapply-claude-mem-platform-ui.py hermes-provider/__init__.py
       - name: My Work and Viewer overlays
         run: node --test tests/work-view-branding.test.mjs

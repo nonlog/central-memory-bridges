@@ -6,7 +6,7 @@ export HOME=/root
 export PATH=/root/.bun/bin:/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 SERVICE=claude-mem.service
-DEPENDENT_SERVICE=central-memory-chatgpt-mcp.service
+DEPENDENT_SERVICE=central-memory-web-mcp.service
 DATA=/srv/storage/shared/us-migrated/claude-mem
 PLUGIN=/root/.claude/plugins/marketplaces/thedotmack
 BACKUP_ROOT=/srv/backups/claude-mem

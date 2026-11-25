@@ -1,5 +1,5 @@
 [Unit]
-Description=Central claude-mem MCP bridge for ChatGPT Business
+Description=Central claude-mem MCP bridge for Web MCP clients
 After=network-online.target claude-mem.service
 Wants=network-online.target
 Requires=claude-mem.service
@@ -8,8 +8,8 @@ Requires=claude-mem.service
 Type=simple
 User=central-memory
 Group=central-memory
-WorkingDirectory=/usr/local/lib/central-memory-bridges/chatgpt-mcp
-EnvironmentFile=/etc/central-memory-bridges/chatgpt-mcp.env
+WorkingDirectory=/usr/local/lib/central-memory-bridges/web-mcp
+EnvironmentFile=/etc/central-memory-bridges/web-mcp.env
 ExecStart=/usr/local/bin/node server.mjs
 Restart=on-failure
 RestartSec=3

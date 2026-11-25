@@ -6,7 +6,7 @@ Integration source for connecting multiple AI clients to one central `claude-mem
 
 - `hermes-provider/` — Hermes native `MemoryProvider` adapter. Automatic project-scoped recall and automatic turn capture; explicit cross-project search/recent plus cwd-scoped Work State tools (Worker 13.29+).
 - `pi-extension/` — Pi Coding Agent extension aligned to upstream Claude-mem 13.34+ native prompt capture: persisted Pi `SessionEntry.id` identity, branch/retry-safe admission, privacy-gated context injection, ordered tool/summary capture, progressive recall (`mem_search` / `mem_timeline` / `mem_get_observations`), plus central-only search/recent/remember, optional semantic recall and cwd-scoped Work State tools.
-- `chatgpt-mcp/` — least-privilege remote MCP/OAuth bridge for ChatGPT Business. Exposes only central-memory operations, not host administration; because ChatGPT has no real checkout cwd, it filters upstream cwd-bound Work State instructions instead of misrouting them to the bridge host.
+- `web-mcp/` — least-privilege remote MCP/OAuth bridge for ChatGPT Business. Exposes only central-memory operations, not host administration; because ChatGPT has no real checkout cwd, it filters upstream cwd-bound Work State instructions instead of misrouting them to the bridge host.
 - `droid-marketplace/` — native Factory Droid plugin marketplace. Its Claude-mem plugin reuses the official Windows CLI hook runtime and the existing authenticated MCP connection; it does not create a second Worker, OAuth secret, or spool relay.
 - `memory-admin-mcp/` — standalone stdio MCP for Claude Code and Codex that adds only exact-ID `claude_mem_forget` beside their official `claude-mem` integrations.
 - `openclaw-memory-admin/` — optional OpenClaw tool-only plugin exposing the same exact-ID `claude_mem_forget` contract without modifying the official OpenClaw `claude-mem` plugin.
@@ -15,7 +15,7 @@ Integration source for connecting multiple AI clients to one central `claude-mem
 
 ## Production model
 
-One central `claude-mem` Worker remains the source of truth. Client adapters call its HTTP API; they must never start a fallback Worker or create a second active database. ChatGPT Web and Gemini Web share the existing `/chatgpt-mcp/mcp` URL; OAuth client redirect origins distinguish their writes.
+One central `claude-mem` Worker remains the source of truth. Client adapters call its HTTP API; they must never start a fallback Worker or create a second active database. ChatGPT Web and Gemini Web share the canonical `/mcp` URL (with `/chatgpt-mcp/mcp` kept as a legacy alias); OAuth client redirect origins distinguish their writes.
 
 Typical project scopes:
 
@@ -117,7 +117,7 @@ See [`docs/CLAUDE_MEM_VIEWER_BRANDING.md`](docs/CLAUDE_MEM_VIEWER_BRANDING.md) f
 
 ## Web MCP memory capability matrix
 
-ChatGPT Web, Gemini Web, Claude Web, Grok Web, Muse Web, and Executor can share the same `https://claude-mem.414222.xyz/chatgpt-mcp/mcp` Streamable HTTP endpoint and central Worker. OAuth client registration/callback determines platform_source. The original seven tools remain unchanged. Web MCP additionally exposes progressive search, durable manual notes, advanced search filters, timelines, observation/tool-use batches, exact record/list/project/stats retrieval, Work State read/write (stable virtual project cwd), TeamBrain query/brief, full session-start context, Worker-supported deletion, and unified Hindsight access (`hindsight_recall`, `hindsight_reflect`, `hindsight_retain`, plus dual-pool `memory_search` and `memory_remember`/`save_memory` dual-write when `HINDSIGHT_API_KEY` is configured). Destructive Hindsight bank/memory administration (`delete_bank`, `clear_memories`) and server-runtime-only `/v1/*` filesystem/host admin capabilities are never exposed.
+ChatGPT Web, Gemini Web, Claude Web, Grok Web, Muse Web, and Executor can share the same `https://claude-mem.414222.xyz/mcp` Streamable HTTP endpoint and central Worker. OAuth client registration/callback determines platform_source. The original seven tools remain unchanged. Web MCP additionally exposes progressive search, durable manual notes, advanced search filters, timelines, observation/tool-use batches, exact record/list/project/stats retrieval, Work State read/write (stable virtual project cwd), TeamBrain query/brief, full session-start context, Worker-supported deletion, and unified Hindsight access (`hindsight_recall`, `hindsight_reflect`, `hindsight_retain`, plus dual-pool `memory_search` and `memory_remember`/`save_memory` dual-write when `HINDSIGHT_API_KEY` is configured). Destructive Hindsight bank/memory administration (`delete_bank`, `clear_memories`) and server-runtime-only `/v1/*` filesystem/host admin capabilities are never exposed.
 
 Deletion tools `claude_mem_forget` and `memory_delete_session` require the separately requested OAuth `memory:delete` scope and explicit exact IDs with `confirm: true`. Existing grants remain read/write; reconnect and authorize that scope before using deletion. The Worker handles sync-safe deletion; no SQL or arbitrary Worker endpoint is exposed. The `memory_admin_permissions` tool reports the granted scopes. Some Web providers may not offer a scope selection UI; in that case deletion remains unavailable until the OAuth client requests the new scope.
 

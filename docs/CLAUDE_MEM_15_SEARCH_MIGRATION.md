@@ -21,7 +21,7 @@ numeric observation IDs. Destructive tools continue using exact numeric IDs.
 
 ## Bridge behavior
 
-Both `chatgpt-mcp/full-memory-tools.mjs` and `pi-extension/index.ts`
+Both `web-mcp/full-memory-tools.mjs` and `pi-extension/index.ts`
 detect the central Worker's version at each search call through
 `GET /api/version`. The shared `shared/worker-search-compat.mjs` plans:
 

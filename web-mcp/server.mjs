@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { canonicalProjectName } from '../shared/project-name.mjs';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
@@ -103,8 +104,7 @@ function redactSecrets(value) {
   return text;
 }
 function safeProject(project, fallback = DEFAULT_PROJECT) {
-  const cleaned = String(project || fallback).trim().replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
-  return (cleaned || fallback).slice(0, 96);
+  return canonicalProjectName(project, fallback);
 }
 function extractWorkerText(raw) {
   if (typeof raw === 'string') return raw;

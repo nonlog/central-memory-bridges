@@ -16,7 +16,7 @@ const paths=['deploy/claude-mem-weekly-update.sh','deploy/check-worker-upgrade.m
 for(const name of fs.readdirSync(path.join(root,'deploy/windows')).sort()) {
   if (/\.(?:ps1|cjs|json)$/.test(name)) paths.push('deploy/windows/'+name);
 }
-const dirs=['chatgpt-mcp/','hermes-provider/','memory-admin-mcp/',
+const dirs=['web-mcp/','hermes-provider/','memory-admin-mcp/',
 'openclaw-memory-admin/','pi-extension/','droid-marketplace/','recall-bridge/','shared/'];
 const tracked=execFileSync('git',['ls-files','-z'],{cwd:root}).toString('utf8').split('\0').filter(Boolean);
 for(const f of tracked){
