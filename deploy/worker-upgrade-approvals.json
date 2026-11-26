@@ -3,13 +3,6 @@
   "repository": "nonlog/central-memory-bridges",
   "releases": [
     {
-      "version": "15.15.0",
-      "integrity": "sha512-zfTbiVBJu9VABfCOPRT2nmx/z6J8LgyyLejIuWxTCyf8FLv926Z3ZZvz4vYrppja4nmTbNq8iV4HShaIDidIvw==",
-      "contractDigest": "bfc90329ae887b2ae8226f2158e3f8f82b67f57ef4e99240d26101f6688deacb",
-      "workflow": "claude-mem-auto-approve.yml",
-      "runId": 42825621541
-    },
-    {
       "version": "15.15.2",
       "integrity": "sha512-dYmb/BKYGFXfBmHtPom0F2xPRx3bl332dhgY+EXZokgalZycqXB9q+MyxO2DvyMLGbEllhbfkekYGG+J7lejdA==",
       "contractDigest": "bfc90329ae887b2ae8226f2158e3f8f82b67f57ef4e99240d26101f6688deacb",
@@ -57,6 +50,13 @@
       "contractDigest": "250cb38a29227732593e9e5affa3cb897b45b465744a533015023b29e759e9e8",
       "workflow": "claude-mem-auto-approve.yml",
       "runId": 45160004081
+    },
+    {
+      "version": "17.0.0",
+      "integrity": "sha512-5hQE8YSSJu5TJSWKThmvs7yEaSzpbARHJInXuQC0ef0KGiywsZoPA313Io9A/ZufkhnpbgEj/QIF/g2hPO3oSQ==",
+      "contractDigest": "fca70dab315b411e955815bca075a64690ccb4bf91809e4b5d31fc89b2fc4a2a",
+      "workflow": "claude-mem-auto-approve.yml",
+      "runId": 45815965488
     }
   ]
 }
