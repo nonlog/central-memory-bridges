@@ -6,6 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { workerSearchMajor } from '../shared/worker-search-compat.mjs';
 const root=process.argv[2];
 if(!root)throw Error('Usage: node deploy/verify-worker-package.mjs <extracted-npm-package>');
 const read=p=>fs.readFileSync(path.join(root,p),'utf8');
@@ -13,6 +14,7 @@ const pkg=JSON.parse(read('package.json'));
 const plugin=JSON.parse(read('plugin/package.json'));
 assert.match(pkg.version,/^\d+\.\d+\.\d+$/);
 assert.equal(plugin.version,pkg.version,'Worker package and plugin must share a version');
+workerSearchMajor({version:pkg.version});
 const worker=read('plugin/scripts/worker-service.cjs');
 const mcp=read('plugin/scripts/mcp-server.cjs');
 read('plugin/scripts/claude-mem-launcher.cjs');
@@ -24,6 +26,7 @@ const routeChecks=[
   ['DELETE observation','r.delete("/api/observation/:id"'],
   ['POST batch observations','r.post("/api/observations/batch"'],
   ['GET search','r.get("/api/search"'],
+  ['POST dumb-search','r.post("/api/dumb-search"'],
   ['GET timeline','r.get("/api/timeline"'],
   ['POST spool ingest','r.post("/api/spool/ingest"'],
   ['GET search observations','r.get("/api/search/observations"'],

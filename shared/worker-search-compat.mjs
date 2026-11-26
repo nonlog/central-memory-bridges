@@ -1,5 +1,5 @@
 /**
- * Claude-mem worker 14/15/16 search API adapter (pure, no Worker calls).
+ * Claude-mem worker 14/15/16/17 search API adapter (pure, no Worker calls).
  *
  * v14: /api/mem-search accepts mode=guided|auto, continuation, selectedIds.
  * v15: guided state was deleted; Smart search is now GET /api/search followed
@@ -17,7 +17,7 @@ export function workerSearchMajor(versionResponse) {
     ? versionResponse : versionResponse?.version;
   const match = typeof value === 'string' ? /^(\d+)\.\d+\.\d+(?:[-+].*)?$/.exec(value.trim()) : null;
   const major = match ? Number(match[1]) : NaN;
-  if (!Number.isSafeInteger(major) || (major !== 14 && major !== 15 && major !== 16)) {
+  if (!Number.isSafeInteger(major) || (major !== 14 && major !== 15 && major !== 16 && major !== 17)) {
     throw new Error('Unknown central Worker version; refusing to guess the search API contract.');
   }
   return major;

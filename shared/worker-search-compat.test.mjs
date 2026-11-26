@@ -7,7 +7,8 @@ test('accepts known worker versions; fails closed on absent/invalid versions', (
   assert.equal(workerSearchMajor({version:'15.0.1'}),15);
   assert.equal(workerSearchMajor({version:'15.0.2'}),15);
   assert.equal(workerSearchMajor({version:'16.0.0'}),16);
-  assert.throws(()=>workerSearchMajor({version:'17.0.0'}),/Unknown central Worker version/);
+  assert.equal(workerSearchMajor({version:'17.0.0'}),17);
+  assert.throws(()=>workerSearchMajor({version:'18.0.0'}),/Unknown central Worker version/);
   assert.throws(()=>workerSearchMajor({status:'ok'}),/Unknown central Worker version/);
   assert.throws(()=>workerSearchMajor({version:'v15.0.1'}),/Unknown central Worker version/);
 });
@@ -72,6 +73,15 @@ test('16.x retains v15 Smart index and shallow dumb-search routes', () => {
     route:'/api/search?query=parser&format=json&project=proj+a&limit=8',method:'GET',step:'smart-index'
   });
   assert.deepEqual(planDumbSearch(16,{query:'parser',project:'demo'}),{
+    route:'/api/dumb-search',method:'POST',body:{query:'parser',project:'demo'},step:'shallow'
+  });
+});
+
+test('17.x retains v15 Smart index and shallow dumb-search routes', () => {
+  assert.deepEqual(planMemorySearch(17,{query:'parser',project:'proj a',limit:8,mode:'guided'}),{
+    route:'/api/search?query=parser&format=json&project=proj+a&limit=8',method:'GET',step:'smart-index'
+  });
+  assert.deepEqual(planDumbSearch(17,{query:'parser',project:'demo'}),{
     route:'/api/dumb-search',method:'POST',body:{query:'parser',project:'demo'},step:'shallow'
   });
 });
