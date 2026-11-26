@@ -227,13 +227,138 @@ function Initialize-ClientLayout([string]$Version) {
   }
 }
 
+$script:PreferredSshTarget = $null
+
+function Get-CentralSshTargets {
+  $targets = [Collections.Generic.List[object]]::new()
+  if ($env:CLAUDE_MEM_SSH_HOST) {
+    $targets.Add([pscustomobject]@{ Label = "env ($($env:CLAUDE_MEM_SSH_HOST))"; HostName = $env:CLAUDE_MEM_SSH_HOST })
+  }
+  $ts = Get-Command tailscale.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source
+  if ($ts) {
+    try {
+      $tsIp = [string]((& $ts ip -4 us 2>$null | Select-Object -First 1)).Trim()
+      if ($tsIp -match '^\d+\.\d+\.\d+\.\d+$') {
+        $targets.Add([pscustomobject]@{ Label = "tailscale ($tsIp)"; HostName = $tsIp })
+      }
+    } catch {}
+  }
+  $targets.Add([pscustomobject]@{ Label = 'us (ssh config)'; HostName = $null })
+
+  if ($script:PreferredSshTarget) {
+    $ordered = [Collections.Generic.List[object]]::new()
+    foreach ($t in $targets) { if ($t.Label -eq $script:PreferredSshTarget) { $ordered.Add($t) } }
+    foreach ($t in $targets) { if ($t.Label -ne $script:PreferredSshTarget) { $ordered.Add($t) } }
+    return $ordered.ToArray()
+  }
+  return $targets.ToArray()
+}
+
+function Invoke-CentralSshJson([string]$SshPath, [string]$ConfigPath, [string]$RemoteCommand, [int]$MaxRounds = 3) {
+  $lastErr = 'SSH failed'
+  for ($round = 1; $round -le $MaxRounds; $round++) {
+    foreach ($target in (Get-CentralSshTargets)) {
+      $args = @('-n', '-F', $ConfigPath, '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', '-o', 'ServerAliveInterval=10', '-o', 'ServerAliveCountMax=3', '-o', 'StrictHostKeyChecking=accept-new')
+      if ($target.HostName) {
+        $args += @('-o', "HostName=$($target.HostName)")
+      }
+      $args += @('us', $RemoteCommand)
+
+      $previousErrorPreference = $ErrorActionPreference
+      try {
+        $ErrorActionPreference = 'Continue'
+        $rawLines = @(& $SshPath @args 2>&1 | ForEach-Object { [string]$_ })
+        $code = $LASTEXITCODE
+      } finally {
+        $ErrorActionPreference = $previousErrorPreference
+      }
+
+      if ($code -eq 0) {
+        $jsonLine = $rawLines | Where-Object { $_.Trim().StartsWith('{') } | Select-Object -Last 1
+        if ($jsonLine) {
+          try {
+            $parsed = $jsonLine | ConvertFrom-Json
+            if ($script:PreferredSshTarget -ne $target.Label) {
+              $script:PreferredSshTarget = $target.Label
+              Write-Log "SSH route selected: $($target.Label)"
+            }
+            return $parsed
+          } catch {
+            $lastErr = "Invalid JSON from $($target.Label): $($_.Exception.Message)"
+          }
+        } else {
+          $lastErr = "Empty JSON response from $($target.Label)"
+        }
+      } else {
+        $detail = ($rawLines | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Last 2) -join ' | '
+        $lastErr = "$($target.Label) exited with code $code$(if ($detail) { ": $detail" })"
+      }
+    }
+    if ($round -lt $MaxRounds) {
+      Start-Sleep -Seconds ([Math]::Min(6, $round * 2))
+    }
+  }
+  throw $lastErr
+}
+
 function Invoke-CentralUpdateCheck {
   if ($TargetVersion -notmatch '^\d+\.\d+\.\d+$') { throw 'UniGetUI must supply an exact stable TargetVersion' }
   $ssh = Get-Command ssh.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1 -ExpandProperty Source
   $config = Join-Path $HomeDir '.ssh\config'
   Write-Log "User requested manual central Worker update to $TargetVersion"
-  $remote = "/usr/local/sbin/claude-mem-manual-upgrade $TargetVersion"
-  Invoke-Checked $ssh @('-F',$config,'-o','BatchMode=yes','-o','ConnectTimeout=10','-o','ServerAliveInterval=15','-o','ServerAliveCountMax=4','us',$remote) | Out-Null
+
+  $start = Invoke-CentralSshJson -SshPath $ssh -ConfigPath $config -RemoteCommand "/usr/local/sbin/claude-mem-manual-upgrade --start $TargetVersion" -MaxRounds 4
+  if ($start.state -eq 'already_satisfied') {
+    Write-Log ([string]$start.message)
+    return
+  }
+  $jobId = [string]$start.jobId
+  if ([string]::IsNullOrWhiteSpace($jobId)) { throw 'Remote upgrade dispatcher did not return a jobId' }
+  if ($start.reused) {
+    Write-Log "Attached to in-progress central upgrade job $jobId (target=$($start.target))"
+  } else {
+    Write-Log "Started detached central upgrade job $jobId on server (target=$TargetVersion)"
+  }
+
+  $offset = 0
+  $consecutiveErrors = 0
+  $deadline = (Get-Date).AddMinutes(40)
+  while ((Get-Date) -lt $deadline) {
+    Start-Sleep -Seconds 4
+    try {
+      $status = Invoke-CentralSshJson -SshPath $ssh -ConfigPath $config -RemoteCommand "/usr/local/sbin/claude-mem-manual-upgrade --status $jobId $offset" -MaxRounds 2
+      $consecutiveErrors = 0
+      foreach ($line in @($status.lines)) {
+        Write-Log "central-upgrade: $line"
+      }
+      if ($null -ne $status.nextOffset) {
+        $offset = [int]$status.nextOffset
+      }
+      if ($status.state -eq 'succeeded') {
+        Write-Log "Central upgrade job $jobId finished cleanly"
+        return
+      }
+      if ($status.state -eq 'failed') {
+        throw "Central upgrade job $jobId failed on server (exit $($status.exitCode))"
+      }
+    } catch {
+      if ($_.Exception.Message -like "Central upgrade job $jobId failed*") { throw }
+      $consecutiveErrors++
+      Write-Log "Transient SSH poll error (#$consecutiveErrors): $($_.Exception.Message); remote job $jobId continues in background."
+      try {
+        $liveVer = Get-CentralVersion
+        if ((Get-UpdateAction $liveVer $TargetVersion) -eq 'SyncLocal') {
+          Write-Log "Central Worker already converged to $liveVer via HTTPS health check; proceeding with local sync."
+          return
+        }
+      } catch {}
+      if ($consecutiveErrors -ge 20) {
+        throw "Lost SSH connectivity repeatedly ($consecutiveErrors times) while monitoring job $jobId; check server or retry UniGetUI update."
+      }
+      Start-Sleep -Seconds 4
+    }
+  }
+  throw "Timed out waiting for central upgrade job $jobId after 40 minutes"
 }
 
 function Set-RemoteWorkerClientSettings {
