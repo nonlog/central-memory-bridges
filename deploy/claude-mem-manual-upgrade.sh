@@ -3,6 +3,8 @@
 # Heavy candidate compatibility tests run in GitHub Actions, not on this VPS.
 set -Eeuo pipefail
 umask 077
+export HOME="${HOME:-/root}"
+export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 export PATH=/root/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/bin:/bin
 REPO=nonlog/central-memory-bridges
 WORKFLOW=claude-mem-auto-approve.yml
@@ -124,6 +126,8 @@ console.log(JSON.stringify({ state: "running", jobId: s.jobId || "", target: s.t
   systemd-run \
     --unit="$UNIT_NAME" \
     --description="Claude-mem manual central upgrade to $TARGET" \
+    --setenv="HOME=/root" \
+    --setenv="XDG_CONFIG_HOME=/root/.config" \
     --collect \
     "$SELF_SCRIPT" --run-job "$JOB_ID" "$TARGET" >/dev/null 2>&1
 
@@ -131,8 +135,9 @@ console.log(JSON.stringify({ state: "running", jobId: s.jobId || "", target: s.t
 }
 
 run_async_job() {
-  local JOB_ID="${1:-}" TARGET="${2:-}"
-  [[ -n "$JOB_ID" && "$TARGET" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 64
+  ASYNC_JOB_ID="${1:-}"
+  ASYNC_TARGET="${2:-}"
+  [[ -n "$ASYNC_JOB_ID" && "$ASYNC_TARGET" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 64
   mkdir -p "$STATE_DIR"
   exec >>"$LOG_FILE" 2>&1
   on_job_exit() {
@@ -140,13 +145,13 @@ run_async_job() {
     local ver=''
     ver=$(node -e 'process.stdout.write(require(process.argv[1]).version)' "$WORKER" 2>/dev/null || true)
     if [[ $rc -eq 0 ]]; then
-      write_state "$JOB_ID" "$TARGET" "succeeded" "0" "$ver"
+      write_state "$ASYNC_JOB_ID" "$ASYNC_TARGET" "succeeded" "0" "$ver"
     else
-      write_state "$JOB_ID" "$TARGET" "failed" "$rc" "$ver"
+      write_state "$ASYNC_JOB_ID" "$ASYNC_TARGET" "failed" "$rc" "$ver"
     fi
   }
   trap on_job_exit EXIT
-  run_upgrade "$TARGET"
+  run_upgrade "$ASYNC_TARGET"
 }
 
 show_async_status() {
