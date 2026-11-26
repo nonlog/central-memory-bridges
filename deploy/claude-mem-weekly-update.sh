@@ -7,7 +7,7 @@ export PATH=/root/.bun/bin:/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/
 
 SERVICE=claude-mem.service
 DEPENDENT_SERVICE=central-memory-web-mcp.service
-DATA=/srv/storage/shared/us-migrated/claude-mem
+DATA=/srv/appdata/claude-mem
 PLUGIN=/root/.claude/plugins/marketplaces/thedotmack
 BACKUP_ROOT=/srv/backups/claude-mem
 LOCK=/run/claude-mem-weekly-update.lock
@@ -242,11 +242,11 @@ log "Reapplied and verified local platform identity Worker/Viewer overlay"
 # Reapply the icon/name branding layer after the identity/source patch. This is
 # intentionally non-blocking so an upstream UI change cannot break the official
 # claude-mem update/rollback path.
-CODEX_ICON_SRC=/srv/storage/shared/us-migrated/claude-mem/ui-overlays/codex-app-ga-logo.png
-OPENCLAW_ICON_SRC=/srv/storage/shared/us-migrated/claude-mem/ui-overlays/openclaw-favicon.svg
-HERMES_ICON_SRC=/srv/storage/shared/us-migrated/claude-mem/ui-overlays/hermes-favicon-32.png
-CLAUDE_ICON_SRC=/srv/storage/shared/us-migrated/claude-mem/ui-overlays/claude-favicon.ico
-OMP_ICON_SRC=/srv/storage/shared/us-migrated/claude-mem/ui-overlays/omp-favicon.svg
+CODEX_ICON_SRC=/srv/appdata/claude-mem/ui-overlays/codex-app-ga-logo.png
+OPENCLAW_ICON_SRC=/srv/appdata/claude-mem/ui-overlays/openclaw-favicon.svg
+HERMES_ICON_SRC=/srv/appdata/claude-mem/ui-overlays/hermes-favicon-32.png
+CLAUDE_ICON_SRC=/srv/appdata/claude-mem/ui-overlays/claude-favicon.ico
+OMP_ICON_SRC=/srv/appdata/claude-mem/ui-overlays/omp-favicon.svg
 if [[ -f "$CODEX_ICON_SRC" ]]; then
   install -m 0644 "$CODEX_ICON_SRC" "$PLUGIN/plugin/ui/codex-app-ga-logo.png"
 else
@@ -324,7 +324,7 @@ exact={
 for k,v in old.items():
     if k in exact or any(k.startswith(pre) for pre in prefixes):
         d[k]=v
-d["CLAUDE_MEM_DATA_DIR"]="/srv/storage/shared/us-migrated/claude-mem"
+d["CLAUDE_MEM_DATA_DIR"]="/srv/appdata/claude-mem"
 d["CLAUDE_MEM_WORKER_HOST"]="127.0.0.1"
 d["CLAUDE_MEM_WORKER_PORT"]=37777
 d["CLAUDE_MEM_ALLOWED_ORIGINS"]="https://claude-mem.414222.xyz,https://claude-mem-admin.414222.xyz,https://claude-mem.us-next.nolog.eu.org,https://claude-mem-admin.us-next.nolog.eu.org"

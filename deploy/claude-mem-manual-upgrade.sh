@@ -19,7 +19,7 @@ SELF_SCRIPT=$(readlink -f "$0" 2>/dev/null || printf '%s' "$0")
 verify_health() {
   local expected="${1:-$TARGET}"
   curl -fsS --max-time 8 http://127.0.0.1:37777/api/health | \
-    node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s),target=process.argv[1];if(a.version!==target||a.status!=="ok"||a.mcpReady!==true||a.dependencies?.degraded)process.exit(1);console.log(`Central Worker ${a.version}: healthy, MCP ready`)})' "$expected"
+    node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s),target=process.argv[1];if(a.version!==target||a.status!=="ok"||a.mcpReady!==true||a.dependencies?.degraded)process.exit(1);console.log(`Central Worker ${a.version}: healthy, MCP ready`)})' "$expected" || return 1
   curl -fsS --max-time 8 http://127.0.0.1:37777/api/readiness >/dev/null
 }
 
